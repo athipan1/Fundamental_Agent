@@ -22,12 +22,16 @@ def get_financial_data(ticker: str) -> dict:
         debt_to_equity = info.get('debtToEquity')
         revenue_growth = info.get('revenueGrowth')
         profit_margins = info.get('profitMargins')
+        pe_ratio = info.get('trailingPE')
+        dividend_yield = info.get('dividendYield')
 
         data = {
             "ROE": roe,
             "Debt to Equity Ratio": debt_to_equity,
             "Quarterly Revenue Growth (yoy)": revenue_growth,
-            "Profit Margins": profit_margins
+            "Profit Margins": profit_margins,
+            "P/E Ratio": pe_ratio,
+            "Dividend Yield": dividend_yield,
         }
 
         # Check if we got any valid data at all

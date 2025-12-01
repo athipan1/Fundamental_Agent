@@ -15,38 +15,60 @@ generator = pipeline(
 def get_roe_score(roe):
     """Calculates the score component for ROE."""
     if roe > 0.20:
-        return 0.4
+        return 0.30  # Adjusted weight
     if roe > 0.15:
-        return 0.3
+        return 0.20  # Adjusted weight
     if roe > 0.05:
-        return 0.1
+        return 0.10  # Adjusted weight
     return 0.0
 
 
 def get_de_ratio_score(de_ratio):
     """Calculates the score component for D/E ratio."""
     if de_ratio < 0.5:
-        return 0.3
+        return 0.25  # Adjusted weight
     if de_ratio < 1.0:
-        return 0.2
+        return 0.15  # Adjusted weight
     if de_ratio < 2.0:
-        return 0.1
+        return 0.05  # Adjusted weight
     return 0.0
 
 
 def get_rev_growth_score(rev_growth):
     """Calculates the score component for revenue growth."""
     if rev_growth > 0.10:
-        return 0.2
+        return 0.15  # Adjusted weight
     if rev_growth > 0.05:
-        return 0.1
+        return 0.10  # Adjusted weight
     return 0.0
 
 
 def get_margins_score(margins):
     """Calculates the score component for profit margins."""
     if margins > 0.20:
-        return 0.1
+        return 0.10  # Adjusted weight
+    return 0.0
+
+
+def get_pe_ratio_score(pe_ratio):
+    """Calculates the score component for P/E ratio."""
+    if pe_ratio is None:
+        return 0.0
+    if pe_ratio < 15:
+        return 0.10
+    if pe_ratio < 25:
+        return 0.05
+    return 0.0
+
+
+def get_dividend_yield_score(dividend_yield):
+    """Calculates the score component for dividend yield."""
+    if dividend_yield is None:
+        return 0.0
+    if dividend_yield > 0.04:
+        return 0.10
+    if dividend_yield > 0.02:
+        return 0.05
     return 0.0
 
 
@@ -57,12 +79,16 @@ def calculate_score(data: dict) -> float:
         de_ratio = (data.get("Debt to Equity Ratio") or float('inf')) / 100.0
         rev_growth = data.get("Quarterly Revenue Growth (yoy)") or 0.0
         margins = data.get("Profit Margins") or 0.0
+        pe_ratio = data.get("P/E Ratio")
+        dividend_yield = data.get("Dividend Yield")
 
         score = 0.0
         score += get_roe_score(roe)
         score += get_de_ratio_score(de_ratio)
         score += get_rev_growth_score(rev_growth)
         score += get_margins_score(margins)
+        score += get_pe_ratio_score(pe_ratio)
+        score += get_dividend_yield_score(dividend_yield)
 
     except (ValueError, TypeError):
         return 0.0
@@ -86,6 +112,8 @@ def create_prompt(data: dict, ticker: str) -> str:
         "Rev Growth (yoy)":
             f"{data.get('Quarterly Revenue Growth (yoy)', 0):.2%}",
         "Profit Margins": f"{data.get('Profit Margins', 0):.2%}",
+        "P/E Ratio": f"{data.get('P/E Ratio', 0):.2f}",
+        "Dividend Yield": f"{data.get('Dividend Yield', 0):.2%}",
     }
     data_string = ", ".join([
         f"{key}: {value}" for key, value in formatted_data.items()
