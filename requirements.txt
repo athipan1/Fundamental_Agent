@@ -2,3 +2,5 @@ yfinance
 transformers
 torch
 accelerate
+flake8
+pytest

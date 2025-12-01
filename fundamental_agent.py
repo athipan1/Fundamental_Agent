@@ -3,6 +3,7 @@ import json
 from data_fetcher import get_financial_data
 from analyzer import analyze_financials
 
+
 def main():
     """
     The main function for the Fundamental Analysis Agent.
@@ -10,8 +11,14 @@ def main():
     and prints the final analysis as a JSON object.
     """
     # --- Argument Parsing ---
-    parser = argparse.ArgumentParser(description="Fundamental Financial Analysis Agent")
-    parser.add_argument("ticker", type=str, help="The stock ticker symbol to analyze (e.g., AAPL, GOOGL).")
+    parser = argparse.ArgumentParser(
+        description="Fundamental Financial Analysis Agent"
+    )
+    parser.add_argument(
+        "ticker",
+        type=str,
+        help="The stock ticker symbol to analyze (e.g., AAPL, GOOGL)."
+    )
     args = parser.parse_args()
 
     ticker = args.ticker.upper()
@@ -39,6 +46,7 @@ def main():
     # --- Step 3: Display Result ---
     print("\n--- ✅ Fundamental Analysis Complete ---")
     print(json.dumps(analysis_result, indent=4, ensure_ascii=False))
+
 
 if __name__ == "__main__":
     main()

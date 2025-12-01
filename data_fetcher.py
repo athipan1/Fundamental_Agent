@@ -1,5 +1,6 @@
 import yfinance as yf
 
+
 def get_financial_data(ticker: str) -> dict:
     """
     Fetches key financial data for a given stock ticker, returning raw numbers.
@@ -8,7 +9,8 @@ def get_financial_data(ticker: str) -> dict:
         ticker: The stock ticker symbol (e.g., 'AAPL').
 
     Returns:
-        A dictionary containing the financial data, or None if the ticker is invalid.
+        A dictionary containing the financial data, or None if the ticker is
+        invalid.
     """
     try:
         stock = yf.Ticker(ticker)
@@ -30,7 +32,7 @@ def get_financial_data(ticker: str) -> dict:
 
         # Check if we got any valid data at all
         if all(value is None for value in data.values()):
-            print(f"Warning: Could not retrieve any financial data for {ticker}. The ticker might be invalid or delisted.")
+            print(f"Warning: Could not retrieve data for {ticker}.")
             return None
 
         return data
@@ -38,6 +40,7 @@ def get_financial_data(ticker: str) -> dict:
     except Exception as e:
         print(f"An error occurred while fetching data for {ticker}: {e}")
         return None
+
 
 if __name__ == '__main__':
     # --- Example Usage ---
