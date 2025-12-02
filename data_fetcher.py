@@ -16,21 +16,33 @@ def get_financial_data(ticker: str) -> dict:
         stock = yf.Ticker(ticker)
         info = stock.info
 
-        # --- Data Extraction ---
-        # Fetch raw numerical data, defaulting to None if not available.
-        roe = info.get('returnOnEquity')
-        debt_to_equity = info.get('debtToEquity')
-        profit_margins = info.get('profitMargins')
-        pe_ratio = info.get('trailingPE')
-        dividend_yield = info.get('dividendYield')
+        data = {}
 
-        data = {
-            "ROE": roe,
-            "Debt to Equity Ratio": debt_to_equity,
-            "Profit Margins": profit_margins,
-            "P/E Ratio": pe_ratio,
-            "Dividend Yield": dividend_yield,
-        }
+        # --- Data Extraction with individual error handling ---
+        try:
+            data["ROE"] = info.get('returnOnEquity')
+        except Exception:
+            data["ROE"] = None
+
+        try:
+            data["Debt to Equity Ratio"] = info.get('debtToEquity')
+        except Exception:
+            data["Debt to Equity Ratio"] = None
+
+        try:
+            data["Profit Margins"] = info.get('profitMargins')
+        except Exception:
+            data["Profit Margins"] = None
+
+        try:
+            data["P/E Ratio"] = info.get('trailingPE')
+        except Exception:
+            data["P/E Ratio"] = None
+
+        try:
+            data["Dividend Yield"] = info.get('dividendYield')
+        except Exception:
+            data["Dividend Yield"] = None
 
         # --- Historical Financial Data ---
         financials = stock.financials
@@ -80,6 +92,4 @@ if __name__ == '__main__':
 
     if financials:
         print(f"Financial Data for {test_ticker}:")
-        for key, value in financials.items():
-            # The output will now be raw numbers (or None)
-            print(f"- {key}: {value} (type: {type(value).__name__})")
+        print(json.dumps(financials, indent=4))

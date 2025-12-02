@@ -15,22 +15,22 @@ generator = pipeline(
 def get_roe_score(roe):
     """Calculates the score component for ROE."""
     if roe > 0.20:
-        return 0.25  # New weight
+        return 0.25
     if roe > 0.15:
-        return 0.15  # New weight
+        return 0.15
     if roe > 0.05:
-        return 0.05  # New weight
+        return 0.05
     return 0.0
 
 
 def get_de_ratio_score(de_ratio):
     """Calculates the score component for D/E ratio."""
     if de_ratio < 0.5:
-        return 0.20  # New weight
+        return 0.20
     if de_ratio < 1.0:
-        return 0.10  # New weight
+        return 0.10
     if de_ratio < 2.0:
-        return 0.05  # New weight
+        return 0.05
     return 0.0
 
 
@@ -42,11 +42,9 @@ def get_revenue_trend_score(historical_revenue: dict) -> tuple[float, str]:
     if not historical_revenue or len(historical_revenue) < 4:
         return 0.0, "ข้อมูลไม่เพียงพอ"
 
-    # Sort by year (descending) to get the last 4 years
     years = sorted(historical_revenue.keys(), reverse=True)[:4]
     revenues = [historical_revenue[year] for year in years]
 
-    # Check growth for the last 3 periods
     growth_years = 0
     if revenues[0] > revenues[1]:
         growth_years += 1
@@ -137,8 +135,8 @@ def calculate_cagr(historical_revenue: dict) -> float | None:
         return None
 
     years = sorted(historical_revenue.keys(), reverse=True)[:4]
-    start_value = historical_revenue[years[3]]  # Earliest year
-    end_value = historical_revenue[years[0]]   # Most recent year
+    start_value = historical_revenue[years[3]]
+    end_value = historical_revenue[years[0]]
 
     if start_value is None or end_value is None or start_value <= 0:
         return None
@@ -152,8 +150,8 @@ def calculate_cagr(historical_revenue: dict) -> float | None:
 
 def get_margins_score(margins):
     """Calculates the score component for profit margins."""
-    if margins > 0.15:  # Looser threshold
-        return 0.05  # New weight
+    if margins > 0.15:
+        return 0.05
     return 0.0
 
 
@@ -161,8 +159,8 @@ def get_pe_ratio_score(pe_ratio):
     """Calculates the score component for P/E ratio."""
     if pe_ratio is None:
         return 0.0
-    if pe_ratio < 20:  # Looser threshold
-        return 0.05  # New weight
+    if pe_ratio < 20:
+        return 0.05
     return 0.0
 
 
@@ -170,8 +168,8 @@ def get_dividend_yield_score(dividend_yield):
     """Calculates the score component for dividend yield."""
     if dividend_yield is None:
         return 0.0
-    if dividend_yield > 0.03:  # Looser threshold
-        return 0.05  # New weight
+    if dividend_yield > 0.03:
+        return 0.05
     return 0.0
 
 
@@ -221,7 +219,7 @@ def create_prompt(
     debt_trend: str,
     cagr: float | None,
 ) -> str:
-    """Creates a simple prompt with formatted data for the LLM."""
+    """Creates a detailed prompt for the LLM."""
     formatted_data = {
         "ROE": f"{data.get('ROE', 0):.2%}",
         "D/E Ratio": f"{data.get('Debt to Equity Ratio', 0):.2f}",
@@ -240,8 +238,8 @@ def create_prompt(
     ])
 
     prompt = f"""
-    Based on the following data for {ticker} ({data_string}), write a single,
-    brief sentence in Thai summarizing the financial situation.
+    วิเคราะห์สถานการณ์ทางการเงินของ {ticker} จากข้อมูลต่อไปนี้: {data_string}.
+    สรุปเป็นประโยคสั้นๆ ไม่เกิน 20 คำเป็นภาษาไทย.
     """
     return prompt
 
@@ -253,7 +251,6 @@ def analyze_financials(ticker: str, data: dict) -> dict:
     if not data:
         return None
 
-    # --- Trend Analysis ---
     historical_revenue = data.get("Historical Revenue", {})
     revenue_trend_score, revenue_trend_str = get_revenue_trend_score(
         historical_revenue
@@ -268,7 +265,6 @@ def analyze_financials(ticker: str, data: dict) -> dict:
     historical_debt = data.get("Historical Total Debt", {})
     debt_trend_score, debt_trend_str = get_debt_trend_score(historical_debt)
 
-    # --- Scoring ---
     score = calculate_score(
         data,
         revenue_trend_score,
@@ -277,7 +273,6 @@ def analyze_financials(ticker: str, data: dict) -> dict:
     )
     strength = generate_strength(score)
 
-    # --- Prompting ---
     prompt = create_prompt(
         data,
         ticker,
@@ -288,7 +283,7 @@ def analyze_financials(ticker: str, data: dict) -> dict:
     )
     messages = [{"role": "user", "content": prompt}]
 
-    reasoning = "ไม่สามารถสร้างคำวิเคราะห์ได้"  # Default value
+    reasoning = "ไม่สามารถสร้างคำวิเคราะห์ได้"
     try:
         outputs = generator(messages, max_new_tokens=128, do_sample=False)
         generated_text = outputs[0]["generated_text"][-1]['content'].strip()
@@ -309,10 +304,20 @@ if __name__ == '__main__':
     sample_ticker = 'AAPL'
     sample_data = {
         'ROE': 1.7142, 'Debt to Equity Ratio': 152.41,
-        'Quarterly Revenue Growth (yoy)': 0.079, 'Profit Margins': 0.2692
+        'Profit Margins': 0.2692, 'P/E Ratio': 37.47, 'Dividend Yield': 0.37,
+        'Historical Revenue': {
+            '2023-09-30': 383285000000, '2022-09-30': 394328000000,
+            '2021-09-30': 365817000000, '2020-09-30': 274515000000
+        },
+        'Historical Net Income': {
+            '2023-09-30': 96995000000, '2022-09-30': 99803000000,
+            '2021-09-30': 94680000000, '2020-09-30': 57411000000
+        },
+        'Historical Total Debt': {
+            '2023-09-30': 111088000000, '2022-09-30': 120069000000,
+            '2021-09-30': 124719000000, '2020-09-30': 112436000000
+        }
     }
-    print(f"--- Starting analysis for {sample_ticker} ---")
     analysis_result = analyze_financials(sample_ticker, sample_data)
     if analysis_result:
-        print("\n--- Analysis Result ---")
         print(json.dumps(analysis_result, indent=4, ensure_ascii=False))
