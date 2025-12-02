@@ -15,22 +15,22 @@ generator = pipeline(
 def get_roe_score(roe):
     """Calculates the score component for ROE."""
     if roe > 0.20:
-        return 0.30  # Adjusted weight
+        return 0.25
     if roe > 0.15:
-        return 0.20  # Adjusted weight
+        return 0.15
     if roe > 0.05:
-        return 0.10  # Adjusted weight
+        return 0.05
     return 0.0
 
 
 def get_de_ratio_score(de_ratio):
     """Calculates the score component for D/E ratio."""
     if de_ratio < 0.5:
-        return 0.25  # Adjusted weight
+        return 0.20
     if de_ratio < 1.0:
-        return 0.15  # Adjusted weight
+        return 0.10
     if de_ratio < 2.0:
-        return 0.05  # Adjusted weight
+        return 0.05
     return 0.0
 
 
@@ -93,7 +93,7 @@ def calculate_cagr(historical_revenue: dict) -> float | None:
 def get_margins_score(margins):
     """Calculates the score component for profit margins."""
     if margins > 0.20:
-        return 0.10  # Adjusted weight
+        return 0.10
     return 0.0
 
 
@@ -101,7 +101,7 @@ def get_pe_ratio_score(pe_ratio):
     """Calculates the score component for P/E ratio."""
     if pe_ratio is None:
         return 0.0
-    if pe_ratio < 15:
+    if 0 < pe_ratio < 15:
         return 0.10
     if pe_ratio < 25:
         return 0.05
@@ -119,6 +119,24 @@ def get_dividend_yield_score(dividend_yield):
     return 0.0
 
 
+def get_pb_ratio_score(pb_ratio):
+    """Calculates the score component for P/B ratio."""
+    if pb_ratio is None:
+        return 0.0
+    if 0 < pb_ratio < 1.2:
+        return 0.05
+    return 0.0
+
+
+def get_eps_score(eps):
+    """Calculates the score component for EPS."""
+    if eps is None:
+        return 0.0
+    if eps > 0:
+        return 0.05
+    return 0.0
+
+
 def calculate_score(data: dict, trend_score: float) -> float:
     """Calculates a score from 0.0 to 1.0 based on raw financial metrics."""
     try:
@@ -127,14 +145,18 @@ def calculate_score(data: dict, trend_score: float) -> float:
         margins = data.get("Profit Margins") or 0.0
         pe_ratio = data.get("P/E Ratio")
         dividend_yield = data.get("Dividend Yield")
+        pb_ratio = data.get("P/B Ratio")
+        eps = data.get("EPS")
 
         score = 0.0
         score += get_roe_score(roe)
         score += get_de_ratio_score(de_ratio)
-        score += trend_score  # Add the pre-calculated trend score
+        score += trend_score
         score += get_margins_score(margins)
         score += get_pe_ratio_score(pe_ratio)
         score += get_dividend_yield_score(dividend_yield)
+        score += get_pb_ratio_score(pb_ratio)
+        score += get_eps_score(eps)
 
     except (ValueError, TypeError):
         return 0.0
@@ -159,6 +181,8 @@ def create_prompt(
         "D/E Ratio": f"{data.get('Debt to Equity Ratio', 0):.2f}",
         "Profit Margins": f"{data.get('Profit Margins', 0):.2%}",
         "P/E Ratio": f"{data.get('P/E Ratio', 0):.2f}",
+        "P/B Ratio": f"{data.get('P/B Ratio', 0):.2f}",
+        "EPS": f"{data.get('EPS', 0):.2f}",
         "Dividend Yield": f"{data.get('Dividend Yield', 0):.2%}",
         "Revenue Trend": trend,
     }

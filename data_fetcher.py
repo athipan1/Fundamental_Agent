@@ -23,6 +23,8 @@ def get_financial_data(ticker: str) -> dict:
         profit_margins = info.get('profitMargins')
         pe_ratio = info.get('trailingPE')
         dividend_yield = info.get('dividendYield')
+        pb_ratio = info.get('priceToBook')
+        eps = info.get('trailingEps')
 
         data = {
             "ROE": roe,
@@ -30,6 +32,8 @@ def get_financial_data(ticker: str) -> dict:
             "Profit Margins": profit_margins,
             "P/E Ratio": pe_ratio,
             "Dividend Yield": dividend_yield,
+            "P/B Ratio": pb_ratio,
+            "EPS": eps,
         }
 
         # --- Historical Revenue Data ---
