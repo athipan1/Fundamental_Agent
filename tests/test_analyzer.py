@@ -1,6 +1,12 @@
 import unittest
+import sys
+import os
 import pandas as pd
 import numpy as np
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from analyzer import (
     calculate_peer_stats, calculate_summary_score, create_peer_comparison_table
 )
