@@ -3,9 +3,11 @@ from fundamental_agent import run_analysis
 
 app = FastAPI()
 
+
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
+
 
 @app.get("/analyze/{ticker}")
 def analyze_ticker(ticker: str):

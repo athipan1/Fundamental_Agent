@@ -1,13 +1,14 @@
 import sys
 from pathlib import Path
-# Add the project root to the Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi.testclient import TestClient
-from unittest.mock import patch
-from main import app
+from unittest.mock import patch  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from main import app  # noqa: E402
+
 
 client = TestClient(app)
+
 
 def test_analyze_ticker_success():
     mock_analysis = {
@@ -19,6 +20,7 @@ def test_analyze_ticker_success():
         assert response.status_code == 200
         assert response.json() == mock_analysis
         mock_run_analysis.assert_called_once_with("AAPL")
+
 
 def test_analyze_ticker_not_found():
     with patch('main.run_analysis', return_value=None) as mock_run_analysis:
