@@ -25,6 +25,11 @@ def get_financial_data(ticker: str) -> dict:
         dividend_yield = info.get('dividendYield')
         pb_ratio = info.get('priceToBook')
         eps = info.get('trailingEps')
+        revenue_growth = info.get('revenueGrowth')
+        eps_growth = info.get('earningsGrowth')
+        forward_pe = info.get('forwardPE')
+        peg_ratio = info.get('pegRatio')
+        operating_cashflow = info.get('operatingCashflow')
 
         data = {
             "ROE": roe,
@@ -34,6 +39,11 @@ def get_financial_data(ticker: str) -> dict:
             "Dividend Yield": dividend_yield,
             "P/B Ratio": pb_ratio,
             "EPS": eps,
+            "Revenue Growth": revenue_growth,
+            "EPS Growth": eps_growth,
+            "Forward P/E": forward_pe,
+            "PEG Ratio": peg_ratio,
+            "Operating Cash Flow": operating_cashflow,
         }
 
         # --- Historical Revenue Data ---
