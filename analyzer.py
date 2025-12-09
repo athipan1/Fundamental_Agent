@@ -1,16 +1,14 @@
 from typing import Optional
-import torch
-from transformers import pipeline
+import os
 import json
+import google.generativeai as genai
+from dotenv import load_dotenv
 
+load_dotenv()
 
-# Using a more lightweight model to prevent memory-related crashes.
-generator = pipeline(
-    "text-generation",
-    model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    model_kwargs={"torch_dtype": torch.bfloat16},
-    device_map="auto",
-)
+# Configure the Gemini API
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel('models/gemini-flash-latest')
 
 
 def get_roe_score(roe):
@@ -176,28 +174,40 @@ def generate_strength(score: float) -> str:
 def create_prompt(
     data: dict, ticker: str, trend: str, cagr: Optional[float]
 ) -> str:
-    """Creates a simple prompt with formatted data for the LLM."""
+    """Creates an advanced Chain-of-Thought prompt for the Gemini model."""
     formatted_data = {
-        "ROE": f"{data.get('ROE', 0):.2%}",
-        "D/E Ratio": f"{data.get('Debt to Equity Ratio', 0):.2f}",
+        "Return on Equity (ROE)": f"{data.get('ROE', 0):.2%}",
+        "Debt to Equity Ratio": f"{data.get('Debt to Equity Ratio', 0):.2f}",
         "Profit Margins": f"{data.get('Profit Margins', 0):.2%}",
-        "P/E Ratio": f"{data.get('P/E Ratio', 0):.2f}",
-        "P/B Ratio": f"{data.get('P/B Ratio', 0):.2f}",
-        "EPS": f"{data.get('EPS', 0):.2f}",
+        "Price-to-Earnings (P/E) Ratio": f"{data.get('P/E Ratio', 'N/A')}",
+        "Price-to-Book (P/B) Ratio": f"{data.get('P/B Ratio', 'N/A')}",
+        "Earnings Per Share (EPS)": f"{data.get('EPS', 'N/A')}",
         "Dividend Yield": f"{data.get('Dividend Yield', 0):.2%}",
-        "Revenue Trend": trend,
+        "3-Year Revenue Trend": trend,
     }
     if cagr is not None:
-        formatted_data["3Y Revenue CAGR"] = f"{cagr:.2%}"
-
-    data_string = ", ".join([
-        f"{key}: {value}" for key, value in formatted_data.items()
-    ])
-
-    prompt = f"""
-    Based on the following data for {ticker} ({data_string}), write a single,
-    brief sentence in Thai summarizing the financial situation.
-    """
+        formatted_data["3-Year Revenue CAGR"] = f"{cagr:.2%}"
+    data_string = "\n".join([f"- {key}: {value}" for key, value in formatted_data.items()])
+    prompt = (
+        f"คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์หุ้น\n"
+        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} และสรุปภาพรวมในรูปแบบย่อหน้าเดียวที่คมชัดและลึกซึ้ง\n"
+        f"**ข้อมูลที่มี:**\n{data_string}\n\n"
+        f"**กฎเหล็ก (Guardrails):**\n"
+        f"1.  **ห้าม** สร้างข้อมูลหรือตัวเลขใดๆ ที่ไม่มีอยู่ใน `ข้อมูลที่มี` โดยเด็ดขาด\n"
+        f"2.  วิเคราะห์จากข้อมูลที่ให้มาเท่านั้น\n"
+        f"3.  หากข้อมูลในบางหัวข้อไม่เพียงพอต่อการสรุป ให้ระบุว่า \"ข้อมูลไม่เพียงพอที่จะประเมิน\"\n"
+        f"4.  คำตอบทั้งหมดต้องเป็นภาษาไทย\n\n"
+        f"**กระบวนการคิด (Chain of Thought):**\n"
+        f"1.  **ประเมินความสามารถในการทำกำไรและเสถียรภาพ:** ดูที่ ROE, Profit Margins และ Debt to Equity Ratio "
+        f"เพื่อประเมินว่าบริษัทแข็งแกร่งและจัดการหนี้สินได้ดีเพียงใด\n"
+        f"2.  **ประเมินการเติบโต:** พิจารณา 3-Year Revenue Trend และ CAGR (ถ้ามี) "
+        f"เพื่อดูทิศทางการเติบโตของรายได้\n"
+        f"3.  **ประเมินมูลค่า (Valuation):** มองที่ P/E และ P/B Ratio "
+        f"เพื่อประเมินว่าราคาหุ้นถูกหรือแพงเมื่อเทียบกับกำไรและมูลค่าทางบัญชี\n"
+        f"4.  **สรุปภาพรวม:** สังเคราะห์ข้อมูลทั้งหมดเพื่อสร้างบทสรุปที่กระชับและให้ข้อมูลเชิงลึก"
+        f"เกี่ยวกับสถานะทางการเงินของบริษัท\n\n"
+        f"**ผลลัพธ์ที่ต้องการ:**\nเขียนบทวิเคราะห์สรุป (ย่อหน้าเดียว) ตามกระบวนการคิดข้างต้น"
+    )
     return prompt
 
 
@@ -216,12 +226,11 @@ def analyze_financials(ticker: str, data: dict) -> dict:
     strength = generate_strength(score)
 
     prompt = create_prompt(data, ticker, trend_string, cagr)
-    messages = [{"role": "user", "content": prompt}]
 
     reasoning = "ไม่สามารถสร้างคำวิเคราะห์ได้"  # Default value
     try:
-        outputs = generator(messages, max_new_tokens=128, do_sample=False)
-        generated_text = outputs[0]["generated_text"][-1]['content'].strip()
+        response = model.generate_content(prompt)
+        generated_text = response.text.strip()
         if generated_text:
             reasoning = generated_text
     except Exception as e:
