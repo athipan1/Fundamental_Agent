@@ -19,4 +19,14 @@ def analyze_ticker(request: TickerRequest):
     analysis_result = run_analysis(request.ticker)
     if analysis_result is None:
         raise HTTPException(status_code=404, detail="Ticker not found or analysis failed.")
-    return analysis_result
+
+    # Transform the result to the format expected by the Orchestrator
+    orchestrator_response = {
+        "ticker": request.ticker,
+        "recommendation": analysis_result.get("strength"),
+        "confidence_score": analysis_result.get("score"),
+        "analysis_summary": analysis_result.get("reasoning"),
+        "full_report": analysis_result.get("reasoning"),  # Using reasoning for both fields
+    }
+
+    return orchestrator_response
