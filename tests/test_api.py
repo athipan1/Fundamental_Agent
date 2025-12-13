@@ -11,15 +11,29 @@ client = TestClient(app)
 
 
 def test_analyze_ticker_success():
-    """Test successful analysis with a valid ticker."""
-    mock_analysis = {
-        "company_snapshot": {"name": "Apple Inc."},
-        "key_metrics": {"pe_ratio": 25.0}
+    """Test successful analysis and response transformation."""
+    # 1. Mock the output of the *internal* run_analysis function
+    mock_run_analysis_result = {
+        "strength": "พื้นฐานแข็งแกร่ง",
+        "reasoning": "This is a test summary.",
+        "score": 0.85
     }
-    with patch('main.run_analysis', return_value=mock_analysis) as mock_run_analysis:
+
+    # 2. Define the *expected* final JSON output from the API endpoint
+    expected_orchestrator_response = {
+        "ticker": "AAPL",
+        "recommendation": "พื้นฐานแข็งแกร่ง",
+        "confidence_score": 0.85,
+        "analysis_summary": "This is a test summary.",
+        "full_report": "This is a test summary."
+    }
+
+    with patch('main.run_analysis', return_value=mock_run_analysis_result) as mock_run_analysis:
         response = client.post("/analyze", json={"ticker": "AAPL"})
+
+        # 3. Assertions
         assert response.status_code == 200
-        assert response.json() == mock_analysis
+        assert response.json() == expected_orchestrator_response
         mock_run_analysis.assert_called_once_with("AAPL")
 
 
