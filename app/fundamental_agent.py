@@ -1,7 +1,7 @@
 import argparse
 import json
-from data_fetcher import get_financial_data
-from analyzer import analyze_financials
+from .data_fetcher import get_financial_data
+from .analyzer import analyze_financials
 
 
 def run_analysis(ticker: str):

@@ -7,7 +7,7 @@ This project is an AI-powered agent that performs fundamental financial analysis
 To run the analysis directly from the command line, use the following command:
 
 ```bash
-python fundamental_agent.py <TICKER>
+python -m app.fundamental_agent <TICKER>
 ```
 
 Replace `<TICKER>` with the stock ticker you want to analyze (e.g., `AAPL`).
@@ -19,7 +19,7 @@ This project also provides a FastAPI server to expose the analysis functionality
 To start the server, run the following command:
 
 ```bash
-uvicorn main:app --reload --port 8001
+uvicorn app.main:app --reload --port 8001
 ```
 
 The API will be available at `http://127.0.0.1:8001`.
