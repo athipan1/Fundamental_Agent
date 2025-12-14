@@ -4,7 +4,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from unittest.mock import patch  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from main import app  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 client = TestClient(app)
@@ -28,7 +28,7 @@ def test_analyze_ticker_success():
         "full_report": "This is a test summary."
     }
 
-    with patch('main.run_analysis', return_value=mock_run_analysis_result) as mock_run_analysis:
+    with patch('app.main.run_analysis', return_value=mock_run_analysis_result) as mock_run_analysis:
         response = client.post("/analyze", json={"ticker": "AAPL"})
 
         # 3. Assertions
@@ -39,7 +39,7 @@ def test_analyze_ticker_success():
 
 def test_analyze_ticker_not_found():
     """Test the case where the ticker is not found or analysis fails."""
-    with patch('main.run_analysis', return_value=None) as mock_run_analysis:
+    with patch('app.main.run_analysis', return_value=None) as mock_run_analysis:
         response = client.post("/analyze", json={"ticker": "INVALIDTICKER"})
         assert response.status_code == 404
         assert response.json() == {"detail": "Ticker not found or analysis failed."}
