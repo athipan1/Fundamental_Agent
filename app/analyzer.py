@@ -180,49 +180,183 @@ def get_cash_flow_score(cash_flow):
     return 0.0
 
 
-def calculate_score(data: dict, trend_score: float) -> float:
-    """Calculates a score from 0.0 to 1.0 based on raw financial metrics."""
+def calculate_growth_score(data: dict, trend_score: float) -> dict:
+    """
+    Calculates a score based on Growth Investing principles.
+    Returns a dictionary with the total score and a breakdown.
+    """
+    scores = {
+        "growth": 0.0, "valuation": 0.0, "quality": 0.0, "total": 0.0
+    }
     try:
+        # --- Factors ---
         roe = data.get("ROE") or 0.0
         de_ratio = (data.get("Debt to Equity Ratio") or float('inf')) / 100.0
         margins = data.get("Profit Margins") or 0.0
         pe_ratio = data.get("P/E Ratio")
-        dividend_yield = data.get("Dividend Yield")
         pb_ratio = data.get("P/B Ratio")
         eps = data.get("EPS")
-
-        # Growth Investing Focus
         revenue_growth = data.get("Revenue Growth")
         eps_growth = data.get("EPS Growth")
         forward_pe = data.get("Forward P/E")
         peg_ratio = data.get("PEG Ratio")
         cash_flow = data.get("Operating Cash Flow")
+        dividend_yield = data.get("Dividend Yield")
 
-        score = 0.0
+        # --- Scoring ---
         # Growth Factors (High Weight)
-        score += get_growth_score(revenue_growth)
-        score += get_growth_score(eps_growth)
-        score += trend_score  # Historical growth consistency
+        scores["growth"] += get_growth_score(revenue_growth)
+        scores["growth"] += get_growth_score(eps_growth)
+        scores["growth"] += trend_score
 
         # Valuation Factors
-        score += get_peg_ratio_score(peg_ratio)
-        score += get_forward_pe_score(forward_pe)
-        score += get_pe_ratio_score(pe_ratio)
-        score += get_pb_ratio_score(pb_ratio)
+        scores["valuation"] += get_peg_ratio_score(peg_ratio)
+        scores["valuation"] += get_forward_pe_score(forward_pe)
+        scores["valuation"] += get_pe_ratio_score(pe_ratio)
+        scores["valuation"] += get_pb_ratio_score(pb_ratio)
 
         # Quality & Stability Factors
-        score += get_roe_score(roe)
-        score += get_de_ratio_score(de_ratio)
-        score += get_margins_score(margins)
-        score += get_cash_flow_score(cash_flow)
-        score += get_eps_score(eps)
-
+        scores["quality"] += get_roe_score(roe)
+        scores["quality"] += get_de_ratio_score(de_ratio)
+        scores["quality"] += get_margins_score(margins)
+        scores["quality"] += get_cash_flow_score(cash_flow)
+        scores["quality"] += get_eps_score(eps)
         # Lower weight for dividends in a growth model
-        score += get_dividend_yield_score(dividend_yield) * 0.5
+        scores["quality"] += get_dividend_yield_score(dividend_yield) * 0.5
 
+        scores["total"] = sum(scores.values())
     except (ValueError, TypeError):
-        return 0.0
-    return min(round(score, 2), 1.0)
+        return {k: 0.0 for k in scores}
+
+    # Normalize and round
+    for key in scores:
+        scores[key] = round(scores[key], 2)
+    scores["total"] = min(round(scores["total"], 2), 1.0)
+
+    return scores
+
+
+def calculate_value_score(data: dict) -> dict:
+    """
+    Calculates a score based on Value Investing principles.
+    Returns a dictionary with the total score and a breakdown.
+    """
+    scores = {
+        "valuation": 0.0, "quality": 0.0, "financial_health": 0.0, "total": 0.0
+    }
+    try:
+        # --- Factors ---
+        roe = data.get("ROE") or 0.0
+        de_ratio = (data.get("Debt to Equity Ratio") or float('inf')) / 100.0
+        margins = data.get("Profit Margins") or 0.0
+        pe_ratio = data.get("P/E Ratio")
+        pb_ratio = data.get("P/B Ratio")
+        eps = data.get("EPS")
+        cash_flow = data.get("Operating Cash Flow")
+        dividend_yield = data.get("Dividend Yield")
+
+        # --- Scoring ---
+        # Valuation Factors (High Weight)
+        scores["valuation"] += get_pe_ratio_score(pe_ratio) * 3.0
+        scores["valuation"] += get_pb_ratio_score(pb_ratio) * 3.0
+
+        # Financial Health (High Weight)
+        scores["financial_health"] += get_de_ratio_score(de_ratio) * 2.0
+
+        # Quality & Stability Factors
+        scores["quality"] += get_roe_score(roe)
+        scores["quality"] += get_margins_score(margins)
+        scores["quality"] += get_cash_flow_score(cash_flow)
+        scores["quality"] += get_eps_score(eps)
+        scores["quality"] += get_dividend_yield_score(dividend_yield)
+
+        scores["total"] = sum(scores.values())
+    except (ValueError, TypeError):
+        return {k: 0.0 for k in scores}
+
+    # Normalize and round
+    for key in scores:
+        scores[key] = round(scores[key], 2)
+    scores["total"] = min(round(scores["total"], 2), 1.0)
+
+    return scores
+
+
+def get_dividend_sustainability_score(dividend_history: dict) -> tuple[float, str]:
+    """
+    Analyzes the dividend history for consistency and growth.
+    """
+    if not dividend_history or len(dividend_history) < 4:
+        return 0.0, "ข้อมูลปันผลไม่เพียงพอ"
+
+    years = sorted(dividend_history.keys(), reverse=True)[:5]
+    dividends = [dividend_history[year] for year in years]
+
+    growth_years = 0
+    stable_years = 0
+
+    for i in range(len(dividends) - 1):
+        if dividends[i] > dividends[i+1]:
+            growth_years += 1
+            stable_years += 1
+        elif dividends[i] == dividends[i+1] and dividends[i] > 0:
+            stable_years += 1
+
+    if growth_years >= 3:
+        score = 0.25
+        sustainability = "ปันผลเติบโตต่อเนื่อง"
+    elif stable_years >= 4:
+        score = 0.20
+        sustainability = "ปันผลสม่ำเสมอ"
+    elif stable_years >= 2:
+        score = 0.10
+        sustainability = "ปันผลค่อนข้างคงที่"
+    else:
+        score = 0.0
+        sustainability = "ปันผลไม่สม่ำเสมอ"
+
+    return score, sustainability
+
+
+def calculate_dividend_score(data: dict) -> dict:
+    """
+    Calculates a score based on Dividend Investing principles.
+    Returns a dictionary with the total score and a breakdown.
+    """
+    scores = {
+        "yield": 0.0, "sustainability": 0.0, "quality": 0.0, "total": 0.0
+    }
+    try:
+        # --- Factors ---
+        dividend_yield = data.get("Dividend Yield") or 0.0
+        dividend_history = data.get("Dividend History", {})
+        de_ratio = (data.get("Debt to Equity Ratio") or float('inf')) / 100.0
+        cash_flow = data.get("Operating Cash Flow")
+        roe = data.get("ROE") or 0.0
+
+        # --- Scoring ---
+        # Yield (High Weight)
+        scores["yield"] += get_dividend_yield_score(dividend_yield) * 2.0 # Double weight
+
+        # Sustainability (High Weight)
+        sustainability_score, _ = get_dividend_sustainability_score(dividend_history)
+        scores["sustainability"] += sustainability_score
+
+        # Quality & Financial Health
+        scores["quality"] += get_de_ratio_score(de_ratio)
+        scores["quality"] += get_cash_flow_score(cash_flow)
+        scores["quality"] += get_roe_score(roe)
+
+        scores["total"] = sum(scores.values())
+    except (ValueError, TypeError):
+        return {k: 0.0 for k in scores}
+
+    # Normalize and round
+    for key in scores:
+        scores[key] = round(scores[key], 2)
+    scores["total"] = min(round(scores["total"], 2), 1.0)
+
+    return scores
 
 
 def generate_strength(score: float) -> str:
@@ -234,10 +368,10 @@ def generate_strength(score: float) -> str:
     return "พื้นฐานอ่อนแอและมีความเสี่ยง"
 
 
-def create_prompt(
+def create_growth_prompt(
     data: dict, ticker: str, trend: str, cagr: Optional[float]
 ) -> str:
-    """Creates an advanced Chain-of-Thought prompt for the Gemini model."""
+    """Creates a Chain-of-Thought prompt for the 'Growth' style."""
     # Helper for safe formatting
     def format_value(value, format_spec):
         return f"{value:{format_spec}}" if isinstance(value, (int, float)) else "N/A"
@@ -292,36 +426,124 @@ def create_prompt(
     return prompt
 
 
-def analyze_financials(ticker: str, data: dict) -> dict:
+def create_value_prompt(data: dict, ticker: str) -> str:
+    """Creates a Chain-of-Thought prompt for the 'Value' style."""
+    def format_value(value, format_spec):
+        return f"{value:{format_spec}}" if isinstance(value, (int, float)) else "N/A"
+
+    formatted_data = {
+        # Valuation
+        "P/E Ratio": format_value(data.get('P/E Ratio'), '.2f'),
+        "P/B Ratio": format_value(data.get('P/B Ratio'), '.2f'),
+
+        # Quality & Health
+        "Debt to Equity Ratio": format_value(data.get('Debt to Equity Ratio'), '.2f'),
+        "Return on Equity (ROE)": format_value(data.get('ROE'), '.2%'),
+        "Profit Margins": format_value(data.get('Profit Margins'), '.2%'),
+        "Operating Cash Flow": f"${data.get('Operating Cash Flow', 0):,.0f}",
+        "Dividend Yield": format_value(data.get('Dividend Yield'), '.2%'),
+    }
+
+    data_string = "\n".join([f"- {key}: {value}" for key, value in formatted_data.items()])
+    prompt = (
+        f"คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์หุ้นคุณค่า (Value Investing)\n"
+        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} เพื่อค้นหา 'Margin of Safety' และสรุปภาพรวม\n"
+        f"**ข้อมูลที่มี:**\n{data_string}\n\n"
+        f"**กฎเหล็ก (Guardrails):**\n"
+        f"1.  **ห้าม** สร้างข้อมูลใดๆ ที่ไม่มีอยู่โดยเด็ดขาด\n"
+        f"2.  วิเคราะห์จากข้อมูลที่ให้มาเท่านั้น\n"
+        f"3.  หากข้อมูลเป็น 'N/A' ให้ระบุว่า \"ข้อมูลไม่เพียงพอที่จะประเมิน\"\n"
+        f"4.  คำตอบทั้งหมดต้องเป็นภาษาไทย\n\n"
+        f"**กระบวนการคิด (Chain of Thought) สำหรับหุ้นคุณค่า:**\n"
+        f"1.  **ประเมินมูลค่า (Valuation):** นี่คือส่วนสำคัญที่สุด ดูที่ P/E และ P/B Ratio เป็นหลัก ค่าเหล่านี้ต่ำหรือไม่เมื่อเทียบกับค่าเฉลี่ยในอดีตหรือคู่แข่ง (แม้จะไม่มีข้อมูลคู่แข่ง ให้พิจารณาจากหลักการทั่วไปว่าค่ายิ่งต่ำยิ่งดี)\n"
+        f"2.  **ประเมินความแข็งแกร่งของกิจการ (Business Strength):** บริษัทที่ดีต้องมีพื้นฐานแข็งแกร่ง ดูที่ ROE และ Profit Margins เพื่อวัดความสามารถในการทำกำไร และ Operating Cash Flow เพื่อดูสภาพคล่อง\n"
+        f"3.  **ประเมินความเสี่ยงทางการเงิน (Financial Risk):** หุ้นคุณค่าที่ดีไม่ควรมีความเสี่ยงสูง ดูที่ Debt to Equity Ratio ว่าอยู่ในระดับที่จัดการได้หรือไม่ (โดยทั่วไปควรต่ำกว่า 2)\n"
+        f"4.  **สรุปภาพรวมและ Margin of Safety:** สังเคราะห์ข้อมูลทั้งหมดเพื่อสรุปว่าบริษัทมีพื้นฐานที่ดีในราคาที่เหมาะสมหรือไม่ กล่าวคือ มี 'ส่วนเผื่อเพื่อความปลอดภัย' (Margin of Safety) หรือไม่\n\n"
+        f"**ผลลัพธ์ที่ต้องการ:**\nเขียนบทวิเคราะห์สรุป (ย่อหน้าเดียว) ตามกระบวนการคิดข้างต้น"
+    )
+    return prompt
+
+
+def create_dividend_prompt(data: dict, ticker: str, sustainability: str) -> str:
+    """Creates a Chain-of-Thought prompt for the 'Dividend' style."""
+    def format_value(value, format_spec):
+        return f"{value:{format_spec}}" if isinstance(value, (int, float)) else "N/A"
+
+    formatted_data = {
+        "Dividend Yield": format_value(data.get('Dividend Yield'), '.2%'),
+        "Dividend Sustainability": sustainability,
+        "Debt to Equity Ratio": format_value(data.get('Debt to Equity Ratio'), '.2f'),
+        "Operating Cash Flow": f"${data.get('Operating Cash Flow', 0):,.0f}",
+        "Return on Equity (ROE)": format_value(data.get('ROE'), '.2%'),
+    }
+
+    data_string = "\n".join([f"- {key}: {value}" for key, value in formatted_data.items()])
+    prompt = (
+        f"คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์หุ้นปันผล (Dividend Investing)\n"
+        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} เพื่อประเมินความน่าสนใจและความยั่งยืนของเงินปันผล\n"
+        f"**ข้อมูลที่มี:**\n{data_string}\n\n"
+        f"**กฎเหล็ก (Guardrails):**\n"
+        f"1.  **ห้าม** สร้างข้อมูลใดๆ ที่ไม่มีอยู่โดยเด็ดขาด\n"
+        f"2.  วิเคราะห์จากข้อมูลที่ให้มาเท่านั้น\n"
+        f"3.  คำตอบทั้งหมดต้องเป็นภาษาไทย\n\n"
+        f"**กระบวนการคิด (Chain of Thought) สำหรับหุ้นปันผล:**\n"
+        f"1.  **ประเมินผลตอบแทน (Yield):** นี่คือส่วนสำคัญที่สุด ดูที่ Dividend Yield ว่าสูงน่าดึงดูดใจหรือไม่ (โดยทั่วไปสูงกว่า 3-4% ถือว่าดี)\n"
+        f"2.  **ประเมินความยั่งยืน (Sustainability):** ปันผลสูงแต่ไม่ยั่งยืนก็ไม่มีประโยชน์ ดูที่ Dividend Sustainability เพื่อประเมินความสม่ำเสมอในอดีต และดูที่ Operating Cash Flow กับ Debt to Equity Ratio เพื่อประเมินว่าบริษัทมีสถานะทางการเงินแข็งแกร่งพอที่จะจ่ายปันผลต่อไปในอนาคตหรือไม่\n"
+        f"3.  **ประเมินคุณภาพของกิจการ (Business Quality):** บริษัทที่จ่ายปันผลได้ดีควรเป็นกิจการที่ดีด้วย ดูที่ ROE เพื่อวัดความสามารถในการทำกำไร\n"
+        f"4.  **สรุปภาพรวม:** สังเคราะห์ข้อมูลเพื่อสรุปว่าหุ้นตัวนี้เป็นหุ้นปันผลที่น่าลงทุนหรือไม่ โดยพิจารณาทั้งผลตอบแทนและความเสี่ยง\n\n"
+        f"**ผลลัพธ์ที่ต้องการ:**\nเขียนบทวิเคราะห์สรุป (ย่อหน้าเดียว) ตามกระบวนการคิดข้างต้น"
+    )
+    return prompt
+
+
+def analyze_financials(ticker: str, data: dict, style: str = "growth") -> dict:
     """
     Uses Python for scoring and JSON assembly, and an LLM for reasoning.
     """
     if not data:
         return None
 
+    # --- Data Preparation ---
     historical_revenue = data.get("Historical Revenue", {})
     trend_score, trend_string = get_revenue_trend_score(historical_revenue)
     cagr = calculate_cagr(historical_revenue)
+    dividend_history = data.get("Dividend History", {})
+    _, sustainability_string = get_dividend_sustainability_score(dividend_history)
 
-    score = calculate_score(data, trend_score)
+    # --- Scoring & Prompt Generation based on Style ---
+    if style == "growth":
+        score_details = calculate_growth_score(data, trend_score)
+        prompt = create_growth_prompt(data, ticker, trend_string, cagr)
+    elif style == "value":
+        score_details = calculate_value_score(data)
+        prompt = create_value_prompt(data, ticker)
+    elif style == "dividend":
+        score_details = calculate_dividend_score(data)
+        prompt = create_dividend_prompt(data, ticker, sustainability_string)
+    else:
+        raise ValueError(f"Invalid analysis style: {style}")
+
+    score = score_details.get("total", 0.0)
     strength = generate_strength(score)
 
-    prompt = create_prompt(data, ticker, trend_string, cagr)
-
     reasoning = "ไม่สามารถสร้างคำวิเคราะห์ได้"  # Default value
-    try:
-        response = model.generate_content(prompt)
-        generated_text = response.text.strip()
-        if generated_text:
-            reasoning = generated_text
-    except Exception as e:
-        print(f"An error occurred during text generation: {e}")
-        reasoning = f"เกิดข้อผิดพลาดในการสร้างคำวิเคราะห์: {e}"
+    # Skip LLM call if API key is not set (for testing)
+    if os.getenv("GEMINI_API_KEY"):
+        try:
+            response = model.generate_content(prompt)
+            generated_text = response.text.strip()
+            if generated_text:
+                reasoning = generated_text
+        except Exception as e:
+            print(f"An error occurred during text generation: {e}")
+            reasoning = f"เกิดข้อผิดพลาดในการสร้างคำวิเคราะห์: {e}"
 
     return {
         "strength": strength,
         "reasoning": reasoning,
-        "score": score
+        "score": score,
+        "score_details": score_details,
+        "key_metrics": data, # Return the raw data for full report
     }
 
 

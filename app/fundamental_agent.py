@@ -4,17 +4,18 @@ from .data_fetcher import get_financial_data
 from .analyzer import analyze_financials
 
 
-def run_analysis(ticker: str):
+def run_analysis(ticker: str, style: str = "growth"):
     """
     Runs the fundamental analysis for a given stock ticker.
 
     Args:
         ticker (str): The stock ticker symbol.
+        style (str): The analysis style ('growth', 'value', 'dividend').
 
     Returns:
         dict: A dictionary containing the analysis result, or None if data retrieval fails.
     """
-    print(f"--- Starting fundamental analysis for {ticker} ---")
+    print(f"--- Starting fundamental analysis for {ticker} (Style: {style}) ---")
 
     # --- Step 1: Fetch Data ---
     print(f"Fetching financial data for {ticker}...")
@@ -29,7 +30,7 @@ def run_analysis(ticker: str):
 
     # --- Step 2: Analyze Data ---
     print(f"Analyzing financial data for {ticker}...")
-    analysis_result = analyze_financials(ticker, financial_data)
+    analysis_result = analyze_financials(ticker, financial_data, style)
 
     if not analysis_result:
         print("Analysis could not be completed. Exiting.")
@@ -53,10 +54,17 @@ def main():
         type=str,
         help="The stock ticker symbol to analyze (e.g., AAPL, GOOGL)."
     )
+    parser.add_argument(
+        "--style",
+        type=str,
+        default="growth",
+        choices=["growth", "value", "dividend"],
+        help="The investment analysis style."
+    )
     args = parser.parse_args()
 
     ticker = args.ticker.upper()
-    analysis_result = run_analysis(ticker)
+    analysis_result = run_analysis(ticker, args.style)
 
     if analysis_result:
         # --- Step 3: Display Result ---
