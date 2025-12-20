@@ -227,12 +227,10 @@ def calculate_growth_score(data: dict, trend_score: float) -> dict:
         scores["total"] = sum(scores.values())
     except (ValueError, TypeError):
         return {k: 0.0 for k in scores}
-
     # Normalize and round
     for key in scores:
         scores[key] = round(scores[key], 2)
     scores["total"] = min(round(scores["total"], 2), 1.0)
-
     return scores
 
 
@@ -261,7 +259,7 @@ def calculate_value_score(data: dict) -> dict:
         scores["valuation"] += get_pb_ratio_score(pb_ratio) * 3.0
 
         # Financial Health (High Weight)
-        scores["financial_health"] += get_de_ratio_score(de_ratio) * 2.0
+        scores["financial_health"] += get_de_ratio_score(de_ratio) * 2.0  # High weight
 
         # Quality & Stability Factors
         scores["quality"] += get_roe_score(roe)
@@ -278,7 +276,6 @@ def calculate_value_score(data: dict) -> dict:
     for key in scores:
         scores[key] = round(scores[key], 2)
     scores["total"] = min(round(scores["total"], 2), 1.0)
-
     return scores
 
 
@@ -336,7 +333,7 @@ def calculate_dividend_score(data: dict) -> dict:
 
         # --- Scoring ---
         # Yield (High Weight)
-        scores["yield"] += get_dividend_yield_score(dividend_yield) * 2.0 # Double weight
+        scores["yield"] += get_dividend_yield_score(dividend_yield) * 2.0  # Double weight
 
         # Sustainability (High Weight)
         sustainability_score, _ = get_dividend_sustainability_score(dividend_history)
@@ -355,7 +352,6 @@ def calculate_dividend_score(data: dict) -> dict:
     for key in scores:
         scores[key] = round(scores[key], 2)
     scores["total"] = min(round(scores["total"], 2), 1.0)
-
     return scores
 
 
@@ -447,18 +443,24 @@ def create_value_prompt(data: dict, ticker: str) -> str:
     data_string = "\n".join([f"- {key}: {value}" for key, value in formatted_data.items()])
     prompt = (
         f"คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์หุ้นคุณค่า (Value Investing)\n"
-        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} เพื่อค้นหา 'Margin of Safety' และสรุปภาพรวม\n"
+        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} "
+        f"เพื่อค้นหา 'Margin of Safety' และสรุปภาพรวม\n"
         f"**ข้อมูลที่มี:**\n{data_string}\n\n"
         f"**กฎเหล็ก (Guardrails):**\n"
-        f"1.  **ห้าม** สร้างข้อมูลใดๆ ที่ไม่มีอยู่โดยเด็ดขาด\n"
-        f"2.  วิเคราะห์จากข้อมูลที่ให้มาเท่านั้น\n"
-        f"3.  หากข้อมูลเป็น 'N/A' ให้ระบุว่า \"ข้อมูลไม่เพียงพอที่จะประเมิน\"\n"
-        f"4.  คำตอบทั้งหมดต้องเป็นภาษาไทย\n\n"
+        f"1. **ห้าม** สร้างข้อมูลใดๆ ที่ไม่มีอยู่โดยเด็ดขาด\n"
+        f"2. วิเคราะห์จากข้อมูลที่ให้มาเท่านั้น\n"
+        f"3. หากข้อมูลเป็น 'N/A' ให้ระบุว่า \"ข้อมูลไม่เพียงพอที่จะประเมิน\"\n"
+        f"4. คำตอบทั้งหมดต้องเป็นภาษาไทย\n\n"
         f"**กระบวนการคิด (Chain of Thought) สำหรับหุ้นคุณค่า:**\n"
-        f"1.  **ประเมินมูลค่า (Valuation):** นี่คือส่วนสำคัญที่สุด ดูที่ P/E และ P/B Ratio เป็นหลัก ค่าเหล่านี้ต่ำหรือไม่เมื่อเทียบกับค่าเฉลี่ยในอดีตหรือคู่แข่ง (แม้จะไม่มีข้อมูลคู่แข่ง ให้พิจารณาจากหลักการทั่วไปว่าค่ายิ่งต่ำยิ่งดี)\n"
-        f"2.  **ประเมินความแข็งแกร่งของกิจการ (Business Strength):** บริษัทที่ดีต้องมีพื้นฐานแข็งแกร่ง ดูที่ ROE และ Profit Margins เพื่อวัดความสามารถในการทำกำไร และ Operating Cash Flow เพื่อดูสภาพคล่อง\n"
-        f"3.  **ประเมินความเสี่ยงทางการเงิน (Financial Risk):** หุ้นคุณค่าที่ดีไม่ควรมีความเสี่ยงสูง ดูที่ Debt to Equity Ratio ว่าอยู่ในระดับที่จัดการได้หรือไม่ (โดยทั่วไปควรต่ำกว่า 2)\n"
-        f"4.  **สรุปภาพรวมและ Margin of Safety:** สังเคราะห์ข้อมูลทั้งหมดเพื่อสรุปว่าบริษัทมีพื้นฐานที่ดีในราคาที่เหมาะสมหรือไม่ กล่าวคือ มี 'ส่วนเผื่อเพื่อความปลอดภัย' (Margin of Safety) หรือไม่\n\n"
+        f"1. **ประเมินมูลค่า (Valuation):** นี่คือส่วนสำคัญที่สุด ดูที่ P/E และ P/B Ratio เป็นหลัก "
+        f"ค่าเหล่านี้ต่ำหรือไม่เมื่อเทียบกับค่าเฉลี่ยในอดีตหรือคู่แข่ง "
+        f"(แม้จะไม่มีข้อมูลคู่แข่ง ให้พิจารณาจากหลักการทั่วไปว่าค่ายิ่งต่ำยิ่งดี)\n"
+        f"2. **ประเมินความแข็งแกร่งของกิจการ (Business Strength):** บริษัทที่ดีต้องมีพื้นฐานแข็งแกร่ง "
+        f"ดูที่ ROE และ Profit Margins เพื่อวัดความสามารถในการทำกำไร และ Operating Cash Flow เพื่อดูสภาพคล่อง\n"
+        f"3. **ประเมินความเสี่ยงทางการเงิน (Financial Risk):** หุ้นคุณค่าที่ดีไม่ควรมีความเสี่ยงสูง "
+        f"ดูที่ Debt to Equity Ratio ว่าอยู่ในระดับที่จัดการได้หรือไม่ (โดยทั่วไปควรต่ำกว่า 2)\n"
+        f"4. **สรุปภาพรวมและ Margin of Safety:** สังเคราะห์ข้อมูลทั้งหมดเพื่อสรุปว่าบริษัทมีพื้นฐานที่ดี"
+        f"ในราคาที่เหมาะสมหรือไม่ กล่าวคือ มี 'ส่วนเผื่อเพื่อความปลอดภัย' (Margin of Safety) หรือไม่\n\n"
         f"**ผลลัพธ์ที่ต้องการ:**\nเขียนบทวิเคราะห์สรุป (ย่อหน้าเดียว) ตามกระบวนการคิดข้างต้น"
     )
     return prompt
@@ -480,17 +482,23 @@ def create_dividend_prompt(data: dict, ticker: str, sustainability: str) -> str:
     data_string = "\n".join([f"- {key}: {value}" for key, value in formatted_data.items()])
     prompt = (
         f"คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์หุ้นปันผล (Dividend Investing)\n"
-        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} เพื่อประเมินความน่าสนใจและความยั่งยืนของเงินปันผล\n"
+        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} "
+        f"เพื่อประเมินความน่าสนใจและความยั่งยืนของเงินปันผล\n"
         f"**ข้อมูลที่มี:**\n{data_string}\n\n"
         f"**กฎเหล็ก (Guardrails):**\n"
-        f"1.  **ห้าม** สร้างข้อมูลใดๆ ที่ไม่มีอยู่โดยเด็ดขาด\n"
-        f"2.  วิเคราะห์จากข้อมูลที่ให้มาเท่านั้น\n"
-        f"3.  คำตอบทั้งหมดต้องเป็นภาษาไทย\n\n"
+        f"1. **ห้าม** สร้างข้อมูลใดๆ ที่ไม่มีอยู่โดยเด็ดขาด\n"
+        f"2. วิเคราะห์จากข้อมูลที่ให้มาเท่านั้น\n"
+        f"3. คำตอบทั้งหมดต้องเป็นภาษาไทย\n\n"
         f"**กระบวนการคิด (Chain of Thought) สำหรับหุ้นปันผล:**\n"
-        f"1.  **ประเมินผลตอบแทน (Yield):** นี่คือส่วนสำคัญที่สุด ดูที่ Dividend Yield ว่าสูงน่าดึงดูดใจหรือไม่ (โดยทั่วไปสูงกว่า 3-4% ถือว่าดี)\n"
-        f"2.  **ประเมินความยั่งยืน (Sustainability):** ปันผลสูงแต่ไม่ยั่งยืนก็ไม่มีประโยชน์ ดูที่ Dividend Sustainability เพื่อประเมินความสม่ำเสมอในอดีต และดูที่ Operating Cash Flow กับ Debt to Equity Ratio เพื่อประเมินว่าบริษัทมีสถานะทางการเงินแข็งแกร่งพอที่จะจ่ายปันผลต่อไปในอนาคตหรือไม่\n"
-        f"3.  **ประเมินคุณภาพของกิจการ (Business Quality):** บริษัทที่จ่ายปันผลได้ดีควรเป็นกิจการที่ดีด้วย ดูที่ ROE เพื่อวัดความสามารถในการทำกำไร\n"
-        f"4.  **สรุปภาพรวม:** สังเคราะห์ข้อมูลเพื่อสรุปว่าหุ้นตัวนี้เป็นหุ้นปันผลที่น่าลงทุนหรือไม่ โดยพิจารณาทั้งผลตอบแทนและความเสี่ยง\n\n"
+        f"1. **ประเมินผลตอบแทน (Yield):** นี่คือส่วนสำคัญที่สุด "
+        f"ดูที่ Dividend Yield ว่าสูงน่าดึงดูดใจหรือไม่ (โดยทั่วไปสูงกว่า 3-4% ถือว่าดี)\n"
+        f"2. **ประเมินความยั่งยืน (Sustainability):** ปันผลสูงแต่ไม่ยั่งยืนก็ไม่มีประโยชน์ "
+        f"ดูที่ Dividend Sustainability เพื่อประเมินความสม่ำเสมอในอดีต และดูที่ Operating Cash Flow "
+        f"กับ Debt to Equity Ratio เพื่อประเมินว่าบริษัทมีสถานะทางการเงินแข็งแกร่งพอที่จะจ่ายปันผลต่อไปในอนาคตหรือไม่\n"
+        f"3. **ประเมินคุณภาพของกิจการ (Business Quality):** บริษัทที่จ่ายปันผลได้ดีควรเป็นกิจการที่ดีด้วย "
+        f"ดูที่ ROE เพื่อวัดความสามารถในการทำกำไร\n"
+        f"4. **สรุปภาพรวม:** สังเคราะห์ข้อมูลเพื่อสรุปว่าหุ้นตัวนี้เป็นหุ้นปันผลที่น่าลงทุนหรือไม่ "
+        f"โดยพิจารณาทั้งผลตอบแทนและความเสี่ยง\n\n"
         f"**ผลลัพธ์ที่ต้องการ:**\nเขียนบทวิเคราะห์สรุป (ย่อหน้าเดียว) ตามกระบวนการคิดข้างต้น"
     )
     return prompt
@@ -543,7 +551,7 @@ def analyze_financials(ticker: str, data: dict, style: str = "growth") -> dict:
         "reasoning": reasoning,
         "score": score,
         "score_details": score_details,
-        "key_metrics": data, # Return the raw data for full report
+        "key_metrics": data,  # Return the raw data for full report
     }
 
 

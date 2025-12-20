@@ -1,4 +1,3 @@
-import pytest
 from app.analyzer import (
     calculate_growth_score,
     calculate_value_score,
@@ -39,12 +38,14 @@ sample_data_dividend = {
     "ROE": 0.19,
 }
 
+
 def test_calculate_growth_score():
     """Test the growth scoring logic."""
     trend_score = 0.15  # Assuming 3 years of consistent growth
     scores = calculate_growth_score(sample_data_growth, trend_score)
     assert scores["total"] > 0.7
     assert scores["growth"] > 0.5
+
 
 def test_calculate_value_score():
     """Test the value scoring logic."""
@@ -53,12 +54,14 @@ def test_calculate_value_score():
     assert scores["valuation"] > 0.4
     assert scores["financial_health"] > 0.2
 
+
 def test_calculate_dividend_score():
     """Test the dividend scoring logic."""
     scores = calculate_dividend_score(sample_data_dividend)
     assert scores["total"] > 0.7
     assert scores["yield"] > 0.15
     assert scores["sustainability"] > 0.2
+
 
 def test_get_dividend_sustainability_score():
     """Test the dividend sustainability logic."""

@@ -1,8 +1,8 @@
-import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 
 client = TestClient(app)
+
 
 def test_analyze_endpoint_growth():
     """Test the /analyze endpoint with the 'growth' style."""
@@ -14,6 +14,7 @@ def test_analyze_endpoint_growth():
     assert "full_report" in data
     assert "growth" in data["full_report"]["score_details"]
 
+
 def test_analyze_endpoint_value():
     """Test the /analyze endpoint with the 'value' style."""
     response = client.post("/analyze", json={"ticker": "MSFT", "style": "value"})
@@ -24,6 +25,7 @@ def test_analyze_endpoint_value():
     assert "full_report" in data
     assert "valuation" in data["full_report"]["score_details"]
 
+
 def test_analyze_endpoint_dividend():
     """Test the /analyze endpoint with the 'dividend' style."""
     response = client.post("/analyze", json={"ticker": "KO", "style": "dividend"})
@@ -33,6 +35,7 @@ def test_analyze_endpoint_dividend():
     assert "recommendation" in data
     assert "full_report" in data
     assert "yield" in data["full_report"]["score_details"]
+
 
 def test_analyze_endpoint_invalid_ticker():
     """Test the /analyze endpoint with an invalid ticker."""

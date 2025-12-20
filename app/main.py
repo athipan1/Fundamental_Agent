@@ -1,11 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import Literal
 from .fundamental_agent import run_analysis
 
 app = FastAPI()
-
-
-from typing import Literal
 
 
 class TickerRequest(BaseModel):
