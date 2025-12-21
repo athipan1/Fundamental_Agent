@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import Literal
 from .fundamental_agent import run_analysis
 
 app = FastAPI()
@@ -7,6 +8,7 @@ app = FastAPI()
 
 class TickerRequest(BaseModel):
     ticker: str
+    style: Literal["growth", "value", "dividend"] = "growth"
 
 
 @app.get("/")
@@ -16,7 +18,7 @@ def read_root():
 
 @app.post("/analyze")
 def analyze_ticker(request: TickerRequest):
-    analysis_result = run_analysis(request.ticker)
+    analysis_result = run_analysis(request.ticker, request.style)
     if analysis_result is None:
         raise HTTPException(status_code=404, detail="Ticker not found or analysis failed.")
 
@@ -26,7 +28,7 @@ def analyze_ticker(request: TickerRequest):
         "recommendation": analysis_result.get("strength"),
         "confidence_score": analysis_result.get("score"),
         "analysis_summary": analysis_result.get("reasoning"),
-        "full_report": analysis_result.get("reasoning"),  # Using reasoning for both fields
+        "full_report": analysis_result,
     }
 
     return orchestrator_response

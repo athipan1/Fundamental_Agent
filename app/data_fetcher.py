@@ -58,6 +58,13 @@ def get_financial_data(ticker: str) -> dict:
                 for k, v in last_four_years.items()
             }
 
+        # --- Dividend History ---
+        dividends = stock.dividends
+        if not dividends.empty:
+            # Get the last 5 years of dividend data
+            last_5_years_dividends = dividends.resample('YE').sum().tail(5).to_dict()
+            data['Dividend History'] = last_5_years_dividends
+
         # Check if we got any valid data at all
         if all(value is None for value in data.values()):
             print(f"Warning: Could not retrieve data for {ticker}.")
