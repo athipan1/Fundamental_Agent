@@ -11,11 +11,12 @@ from .fundamental_agent import run_analysis
 app = FastAPI(
     title="Fundamental Agent",
     description="AI Fundamental Analysis Agent for Orchestrator",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 # ------------------------------------------------------------------------------
 # Request / Response Models
@@ -55,16 +56,19 @@ def analyze_ticker(request: TickerRequest):
     Analyze a ticker using fundamental analysis logic and
     return a response that strictly follows the Orchestrator contract.
     """
-
-    logger.info(f"Received analysis request: ticker={request.ticker}, style={request.style}")
+    logger.info(
+        "Received analysis request: ticker=%s, style=%s",
+        request.ticker,
+        request.style,
+    )
 
     analysis_result = run_analysis(request.ticker, request.style)
 
     if analysis_result is None:
-        logger.error(f"Analysis failed for ticker={request.ticker}")
+        logger.error("Analysis failed for ticker=%s", request.ticker)
         raise HTTPException(
             status_code=404,
-            detail="Ticker not found or analysis failed"
+            detail="Ticker not found or analysis failed",
         )
 
     # --------------------------------------------------------------------------
@@ -89,13 +93,15 @@ def analyze_ticker(request: TickerRequest):
         data=FundamentalData(
             action=action,
             confidence_score=float(score),
-            reason=reasoning
+            reason=reasoning,
         )
     )
 
     logger.info(
-        f"Analysis completed: ticker={request.ticker}, "
-        f"action={action}, confidence={score}"
+        "Analysis completed: ticker=%s, action=%s, confidence=%s",
+        request.ticker,
+        action,
+        score,
     )
 
     return response
