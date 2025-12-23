@@ -9,3 +9,6 @@ uvicorn
 httpx
 python-dotenv
 google-generativeai
+black
+isort
+pre-commit
