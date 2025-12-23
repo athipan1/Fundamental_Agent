@@ -1,74 +1,41 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Literal
 
 from .fundamental_agent import run_analysis
 
-# -------------------------------------------------------------------
-# App Metadata
-# -------------------------------------------------------------------
 
 app = FastAPI(
     title="Fundamental Analysis Agent",
     version="1.0.0",
-    description="Fundamental analysis agent compatible with Orchestrator"
 )
 
-AGENT_TYPE = "fundamental"
-AGENT_VERSION = "1.0"
-
-# -------------------------------------------------------------------
-# Request / Response Models
-# -------------------------------------------------------------------
 
 class TickerRequest(BaseModel):
-    ticker: str = Field(..., example="AOT.BK")
+    ticker: str
     style: Literal["growth", "value", "dividend"] = "growth"
 
 
-class AgentData(BaseModel):
-    action: Literal["buy", "sell", "hold"]
-    confidence_score: float
-    reason: str
-    style: str
-
-
-class AgentResponse(BaseModel):
-    status: Literal["success"]
-    agent_type: str
-    agent_version: str
-    ticker: str
-    data: AgentData
-
-
-# -------------------------------------------------------------------
-# Routes
-# -------------------------------------------------------------------
-
-@app.get("/", include_in_schema=False)
-def health_check():
+@app.get("/")
+def read_root():
     return {"status": "Fundamental Agent is running"}
 
 
-@app.post("/analyze", response_model=AgentResponse)
+@app.post("/analyze")
 def analyze_ticker(request: TickerRequest):
     """
-    Perform fundamental analysis and return a standardized
-    response compatible with the Orchestrator.
+    Analyze a stock ticker and return a response
+    compatible with the Orchestrator.
     """
-
     analysis_result = run_analysis(request.ticker, request.style)
 
-    if not analysis_result:
+    if analysis_result is None:
         raise HTTPException(
             status_code=404,
-            detail="Ticker not found or analysis failed"
+            detail="Ticker not found or analysis failed.",
         )
 
-    # ---------------------------------------------------------------
-    # Normalize strength -> action
-    # ---------------------------------------------------------------
-
+    # Map agent-specific strength to orchestrator action
     action_map = {
         "strong_buy": "buy",
         "buy": "buy",
@@ -78,23 +45,14 @@ def analyze_ticker(request: TickerRequest):
     }
 
     action = action_map.get(
-        analysis_result.get("strength", "neutral"),
-        "hold"
+        analysis_result.get("strength"),
+        "hold",
     )
 
-    # ---------------------------------------------------------------
-    # Build Orchestrator-compatible response
-    # ---------------------------------------------------------------
-
-    return AgentResponse(
-        status="success",
-        agent_type=AGENT_TYPE,
-        agent_version=AGENT_VERSION,
-        ticker=request.ticker,
-        data=AgentData(
-            action=action,
-            confidence_score=analysis_result.get("score", 0.0),
-            reason=analysis_result.get("reasoning", ""),
-            style=request.style
-        )
-    )
+    return {
+        "data": {
+            "action": action,
+            "confidence_score": analysis_result.get("score", 0.0),
+            "reason": analysis_result.get("reasoning", ""),
+        }
+    }
