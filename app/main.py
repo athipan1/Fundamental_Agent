@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
-import logging
+import logging 
 
 from .fundamental_agent import run_analysis
 
