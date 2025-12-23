@@ -13,10 +13,11 @@ def test_analyze_endpoint_growth():
     response = client.post("/analyze", json={"ticker": "AAPL", "style": "growth"})
     assert response.status_code == 200
     data = response.json()
-    assert data["ticker"] == "AAPL"
-    assert "recommendation" in data
-    assert "full_report" in data
-    assert "growth" in data["full_report"]["score_details"]
+    assert "data" in data
+    assert "action" in data["data"]
+    assert data["data"]["action"] in ["buy", "sell", "hold"]
+    assert "confidence_score" in data["data"]
+    assert "reason" in data["data"]
 
 
 def test_analyze_endpoint_value():
@@ -24,10 +25,11 @@ def test_analyze_endpoint_value():
     response = client.post("/analyze", json={"ticker": "MSFT", "style": "value"})
     assert response.status_code == 200
     data = response.json()
-    assert data["ticker"] == "MSFT"
-    assert "recommendation" in data
-    assert "full_report" in data
-    assert "valuation" in data["full_report"]["score_details"]
+    assert "data" in data
+    assert "action" in data["data"]
+    assert data["data"]["action"] in ["buy", "sell", "hold"]
+    assert "confidence_score" in data["data"]
+    assert "reason" in data["data"]
 
 
 def test_analyze_endpoint_dividend():
@@ -35,10 +37,11 @@ def test_analyze_endpoint_dividend():
     response = client.post("/analyze", json={"ticker": "KO", "style": "dividend"})
     assert response.status_code == 200
     data = response.json()
-    assert data["ticker"] == "KO"
-    assert "recommendation" in data
-    assert "full_report" in data
-    assert "yield" in data["full_report"]["score_details"]
+    assert "data" in data
+    assert "action" in data["data"]
+    assert data["data"]["action"] in ["buy", "sell", "hold"]
+    assert "confidence_score" in data["data"]
+    assert "reason" in data["data"]
 
 
 def test_analyze_endpoint_invalid_ticker():
@@ -46,6 +49,6 @@ def test_analyze_endpoint_invalid_ticker():
     response = client.post("/analyze", json={"ticker": "INVALIDTICKER", "style": "growth"})
     # yfinance might still return some data, so we check for a valid score or a 404
     if response.status_code == 200:
-        assert response.json()["confidence_score"] == 0.0
+        assert response.json()["data"]["confidence_score"] == 0.0
     else:
         assert response.status_code == 404

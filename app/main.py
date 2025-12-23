@@ -22,13 +22,21 @@ def analyze_ticker(request: TickerRequest):
     if analysis_result is None:
         raise HTTPException(status_code=404, detail="Ticker not found or analysis failed.")
 
-    # Transform the result to the format expected by the Orchestrator
-    orchestrator_response = {
-        "ticker": request.ticker,
-        "recommendation": analysis_result.get("strength"),
-        "confidence_score": analysis_result.get("score"),
-        "analysis_summary": analysis_result.get("reasoning"),
-        "full_report": analysis_result,
+    # map ผลลัพธ์ให้ Orchestrator เข้าใจ
+    action_map = {
+        "strong_buy": "buy",
+        "buy": "buy",
+        "neutral": "hold",
+        "sell": "sell",
+        "strong_sell": "sell",
     }
 
-    return orchestrator_response
+    action = action_map.get(analysis_result.get("strength"), "hold")
+
+    return {
+        "data": {
+            "action": action,
+            "confidence_score": analysis_result.get("score", 0.0),
+            "reason": analysis_result.get("reasoning")
+        }
+    }

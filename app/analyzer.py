@@ -355,13 +355,17 @@ def calculate_dividend_score(data: dict) -> dict:
     return scores
 
 
-def generate_strength(score: float) -> str:
-    """Generates a Thai strength summary based on the calculated score."""
-    if score >= 0.7:
-        return "พื้นฐานแข็งแกร่ง"
+def generate_actionable_strength(score: float) -> str:
+    """Generates an actionable strength signal based on the calculated score."""
+    if score >= 0.8:
+        return "strong_buy"
+    if score >= 0.6:
+        return "buy"
     if score >= 0.4:
-        return "พื้นฐานปานกลาง"
-    return "พื้นฐานอ่อนแอและมีความเสี่ยง"
+        return "neutral"
+    if score >= 0.2:
+        return "sell"
+    return "strong_sell"
 
 
 def create_growth_prompt(
@@ -532,7 +536,7 @@ def analyze_financials(ticker: str, data: dict, style: str = "growth") -> dict:
         raise ValueError(f"Invalid analysis style: {style}")
 
     score = score_details.get("total", 0.0)
-    strength = generate_strength(score)
+    strength = generate_actionable_strength(score)
 
     reasoning = "ไม่สามารถสร้างคำวิเคราะห์ได้"  # Default value
     # Skip LLM call if API key is not set (for testing)
