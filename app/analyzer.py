@@ -3,6 +3,7 @@ import os
 import json
 import google.generativeai as genai
 from dotenv import load_dotenv
+from .exceptions import ModelError
 
 load_dotenv()
 
@@ -548,7 +549,7 @@ def analyze_financials(ticker: str, data: dict, style: str = "growth") -> dict:
                 reasoning = generated_text
         except Exception as e:
             print(f"An error occurred during text generation: {e}")
-            reasoning = f"เกิดข้อผิดพลาดในการสร้างคำวิเคราะห์: {e}"
+            raise ModelError(f"Failed to generate analysis from the model: {e}")
 
     return {
         "strength": strength,

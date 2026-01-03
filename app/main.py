@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Literal
 from .fundamental_agent import run_analysis
@@ -17,12 +17,31 @@ def read_root():
 
 
 @app.post("/analyze")
-def analyze_ticker(request: TickerRequest):
-    analysis_result = run_analysis(request.ticker, request.style)
-    if analysis_result is None:
-        raise HTTPException(status_code=404, detail="Ticker not found or analysis failed.")
+def analyze_ticker(request: TickerRequest, req: Request):
+    """
+    Analyzes a stock ticker and returns a standardized analysis response.
+    It handles success and failure cases by returning a consistent schema.
+    """
+    correlation_id = req.headers.get("X-Correlation-ID")
+    analysis_result = run_analysis(
+        request.ticker,
+        request.style,
+        correlation_id=correlation_id
+    )
 
-    # map ผลลัพธ์ให้ Orchestrator เข้าใจ
+    # Check if the analysis failed
+    if "error" in analysis_result:
+        error_reason = analysis_result["error"]
+        return {
+            "analysis": {
+                "action": "hold",
+                "confidence": 0.0,
+                "reason": error_reason,
+                "source": "fundamental_agent"
+            }
+        }
+
+    # --- Process successful analysis ---
     action_map = {
         "strong_buy": "buy",
         "buy": "buy",
@@ -30,13 +49,13 @@ def analyze_ticker(request: TickerRequest):
         "sell": "sell",
         "strong_sell": "sell",
     }
-
     action = action_map.get(analysis_result.get("strength"), "hold")
 
     return {
-        "data": {
+        "analysis": {
             "action": action,
-            "confidence_score": analysis_result.get("score", 0.0),
-            "reason": analysis_result.get("reasoning")
+            "confidence": analysis_result.get("score", 0.0),
+            "reason": analysis_result.get("reasoning"),
+            "source": "fundamental_agent"
         }
     }

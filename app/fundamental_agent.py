@@ -1,42 +1,53 @@
 import argparse
 import json
+from typing import Optional
 from .data_fetcher import get_financial_data
 from .analyzer import analyze_financials
+from .exceptions import TickerNotFound, InsufficientData, ModelError
 
 
-def run_analysis(ticker: str, style: str = "growth"):
+def run_analysis(ticker: str, style: str = "growth", correlation_id: Optional[str] = None):
     """
     Runs the fundamental analysis for a given stock ticker.
 
     Args:
         ticker (str): The stock ticker symbol.
         style (str): The analysis style ('growth', 'value', 'dividend').
+        correlation_id (Optional[str]): The correlation ID for tracing.
 
     Returns:
-        dict: A dictionary containing the analysis result, or None if data retrieval fails.
+        dict: A dictionary containing the analysis result or an error reason.
     """
-    print(f"--- Starting fundamental analysis for {ticker} (Style: {style}) ---")
+    # Use a more structured logging approach
+    log_prefix = f"[{correlation_id}] " if correlation_id else ""
+    print(f"{log_prefix}--- Starting fundamental analysis for {ticker} (Style: {style}) ---")
 
-    # --- Step 1: Fetch Data ---
-    print(f"Fetching financial data for {ticker}...")
-    financial_data = get_financial_data(ticker)
+    try:
+        # --- Step 1: Fetch Data ---
+        print(f"{log_prefix}Fetching financial data for {ticker}...")
+        financial_data = get_financial_data(ticker)
+        print(f"{log_prefix}Data fetched successfully.")
 
-    if not financial_data:
-        print(f"Could not retrieve data for {ticker}. Exiting.")
-        return None
+        # --- Step 2: Analyze Data ---
+        print(f"{log_prefix}Analyzing financial data for {ticker}...")
+        analysis_result = analyze_financials(ticker, financial_data, style)
+        print(f"{log_prefix}Analysis completed successfully.")
 
-    print("Data fetched successfully.")
-    # print(json.dumps(financial_data, indent=2)) # Let's comment this out for API use
+        return analysis_result
 
-    # --- Step 2: Analyze Data ---
-    print(f"Analyzing financial data for {ticker}...")
-    analysis_result = analyze_financials(ticker, financial_data, style)
-
-    if not analysis_result:
-        print("Analysis could not be completed. Exiting.")
-        return None
-
-    return analysis_result
+    except TickerNotFound:
+        print(f"{log_prefix}Analysis failed: Ticker '{ticker}' not found.")
+        return {"error": "ticker_not_found"}
+    except InsufficientData:
+        print(f"{log_prefix}Analysis failed: Insufficient data for '{ticker}'.")
+        return {"error": "data_not_enough"}
+    except ModelError:
+        print(f"{log_prefix}Analysis failed: Model could not generate analysis for '{ticker}'.")
+        return {"error": "model_error"}
+    except Exception as e:
+        # Catch any other unexpected errors
+        print(f"{log_prefix}An unexpected error occurred during analysis for '{ticker}': {e}")
+        return {"error": "analysis_failed"}
 
 
 def main():
