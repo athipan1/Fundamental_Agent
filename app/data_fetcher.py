@@ -1,4 +1,5 @@
 import yfinance as yf
+from .exceptions import TickerNotFound, InsufficientData
 
 
 def get_financial_data(ticker: str) -> dict:
@@ -9,15 +10,22 @@ def get_financial_data(ticker: str) -> dict:
         ticker: The stock ticker symbol (e.g., 'AAPL').
 
     Returns:
-        A dictionary containing the financial data, or None if the ticker is
-        invalid.
+        A dictionary containing the financial data.
+
+    Raises:
+        TickerNotFound: If the ticker is invalid or no data is found for it.
+        InsufficientData: If some data is found, but key metrics are missing.
     """
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
 
+        # yfinance may return minimal info for invalid or delisted tickers.
+        # A common sign is a missing 'regularMarketPrice'.
+        if not info or info.get('regularMarketPrice') is None:
+            raise TickerNotFound(f"No data found for ticker '{ticker}'. It may be delisted or invalid.")
+
         # --- Data Extraction ---
-        # Fetch raw numerical data, defaulting to None if not available.
         roe = info.get('returnOnEquity')
         debt_to_equity = info.get('debtToEquity')
         profit_margins = info.get('profitMargins')
@@ -30,6 +38,15 @@ def get_financial_data(ticker: str) -> dict:
         forward_pe = info.get('forwardPE')
         peg_ratio = info.get('pegRatio')
         operating_cashflow = info.get('operatingCashflow')
+
+        # Check if we got any valid core data at all.
+        core_metrics = [
+            roe, debt_to_equity, profit_margins, pe_ratio, dividend_yield,
+            pb_ratio, eps, revenue_growth, eps_growth, forward_pe, peg_ratio,
+            operating_cashflow
+        ]
+        if all(metric is None for metric in core_metrics):
+            raise InsufficientData(f"Could not retrieve any key financial metrics for {ticker}.")
 
         data = {
             "ROE": roe,
@@ -48,33 +65,35 @@ def get_financial_data(ticker: str) -> dict:
 
         # --- Historical Revenue Data ---
         financials = stock.financials
-        if not financials.empty:
-            revenue_data = financials.loc['Total Revenue']
-            # Get the last 4 years of data
-            last_four_years = revenue_data.iloc[:4].to_dict()
-            # Convert Timestamps to strings for JSON compatibility
-            data['Historical Revenue'] = {
-                k.strftime('%Y-%m-%d'): v
-                for k, v in last_four_years.items()
-            }
+        if financials is not None and not financials.empty:
+            if 'Total Revenue' in financials.index:
+                revenue_data = financials.loc['Total Revenue']
+                # Get the last 4 years of data
+                last_four_years = revenue_data.iloc[:4].to_dict()
+                # Convert Timestamps to strings for JSON compatibility
+                data['Historical Revenue'] = {
+                    k.strftime('%Y-%m-%d'): v
+                    for k, v in last_four_years.items()
+                }
 
         # --- Dividend History ---
         dividends = stock.dividends
-        if not dividends.empty:
+        if dividends is not None and not dividends.empty:
             # Get the last 5 years of dividend data
             last_5_years_dividends = dividends.resample('YE').sum().tail(5).to_dict()
             data['Dividend History'] = last_5_years_dividends
 
-        # Check if we got any valid data at all
-        if all(value is None for value in data.values()):
-            print(f"Warning: Could not retrieve data for {ticker}.")
-            return None
-
         return data
 
+    except (TickerNotFound, InsufficientData) as e:
+        # Re-raise our custom exceptions to be handled by the caller
+        print(f"Data fetching failed for {ticker}: {e}")
+        raise
     except Exception as e:
-        print(f"An error occurred while fetching data for {ticker}: {e}")
-        return None
+        # Catch other potential errors from yfinance (e.g., network, parsing)
+        # and treat it as a case of the ticker being un-analyzable.
+        print(f"An unexpected yfinance error occurred for {ticker}: {e}")
+        raise TickerNotFound(f"An unexpected error occurred while fetching data for {ticker}: {e}")
 
 
 if __name__ == '__main__':
