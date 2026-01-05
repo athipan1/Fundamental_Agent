@@ -1,0 +1,36 @@
+name: CI - Validate Fundamental Agent
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Validate Dockerfile syntax
+        run: |
+          docker run --rm -i hadolint/hadolint < Dockerfile
+
+      - name: Lint YAML workflows
+        run: |
+          yamllint .github/workflows/
+
+      - name: Check for required files
+        run: |
+          test -f Dockerfile
+          test -f .dockerignore
+          test -f README.md
+
+      - name: Validate Docker build
+        run: |
+          docker build -t test-agent .
+
+      - name: Run container health check
+        run: |
+          docker run --rm test-agent curl -f http://localhost:8080/health || exit 1
