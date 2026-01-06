@@ -1,7 +1,4 @@
 yfinance==0.2.36
-transformers
-torch
-accelerate
 flake8
 pytest
 fastapi
