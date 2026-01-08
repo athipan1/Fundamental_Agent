@@ -24,15 +24,17 @@ def test_analyze_endpoint_success_growth(mock_run_analysis):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["agent"] == "fundamental_agent"
+    assert data["agent_type"] == "fundamental"
+    assert data["version"] == "2.0.0"
     assert data["status"] == "success"
     assert data["error"] is None
-    assert "analysis" in data["data"]
-    analysis = data["data"]["analysis"]
-    assert analysis["action"] == "buy"
-    assert analysis["confidence"] == 0.75
-    assert analysis["reason"] == "Strong growth prospects."
-    assert analysis["source"] == "fundamental_agent"
+
+    analysis_data = data["data"]
+    assert analysis_data["action"] == "buy"
+    assert analysis_data["confidence_score"] == 0.75
+    assert analysis_data["reason"] == "Strong growth prospects."
+    assert analysis_data["source"] == "fundamental_agent"
+
     mock_run_analysis.assert_called_with("AAPL", "growth", correlation_id="test-growth-123")
 
 
@@ -47,41 +49,53 @@ def test_analyze_endpoint_success_value(mock_run_analysis):
     response = client.post("/analyze", json={"ticker": "MSFT", "style": "value"})
     assert response.status_code == 200
     data = response.json()
+    assert data["agent_type"] == "fundamental"
+    assert data["version"] == "2.0.0"
     assert data["status"] == "success"
-    assert "analysis" in data["data"]
-    analysis = data["data"]["analysis"]
-    assert analysis["action"] == "hold"
-    assert analysis["confidence"] == 0.5
-    assert analysis["source"] == "fundamental_agent"
+
+    analysis_data = data["data"]
+    assert analysis_data["action"] == "hold"
+    assert analysis_data["confidence_score"] == 0.5
+    assert analysis_data["source"] == "fundamental_agent"
 
 
 @patch('app.main.run_analysis')
 def test_analyze_endpoint_ticker_not_found(mock_run_analysis):
     """Test the response for a ticker that is not found."""
-    mock_run_analysis.return_value = {"error": "Ticker XYZ not found"}
+    mock_run_analysis.return_value = {"error": "ticker_not_found"}
     response = client.post("/analyze", json={"ticker": "INVALIDTICKER"})
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "error"
-    assert data["data"] is None
+
+    error_data = data["data"]
+    assert error_data["action"] == "hold"
+    assert error_data["confidence_score"] == 0.0
+    assert error_data["reason"] == "ticker_not_found"
+
     error = data["error"]
     assert error["code"] == "TICKER_NOT_FOUND"
-    assert error["message"] == "Ticker XYZ not found"
+    assert error["message"] == "ticker_not_found"
     assert not error["retryable"]
 
 
 @patch('app.main.run_analysis')
 def test_analyze_endpoint_insufficient_data(mock_run_analysis):
     """Test the response when there is not enough data for analysis."""
-    mock_run_analysis.return_value = {"error": "Insufficient data for analysis"}
+    mock_run_analysis.return_value = {"error": "data_not_enough"}
     response = client.post("/analyze", json={"ticker": "NODATA"})
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "error"
-    assert data["data"] is None
+
+    error_data = data["data"]
+    assert error_data["action"] == "hold"
+    assert error_data["confidence_score"] == 0.0
+    assert error_data["reason"] == "data_not_enough"
+
     error = data["error"]
     assert error["code"] == "INSUFFICIENT_DATA"
-    assert error["message"] == "Insufficient data for analysis"
+    assert error["message"] == "data_not_enough"
 
 
 @patch('app.main.run_analysis')
@@ -92,6 +106,12 @@ def test_analyze_endpoint_model_error(mock_run_analysis):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "error"
+
+    error_data = data["data"]
+    assert error_data["action"] == "hold"
+    assert error_data["confidence_score"] == 0.0
+    assert error_data["reason"] == "some_model_error"
+
     error = data["error"]
     assert error["code"] == "ANALYSIS_FAILED"
     assert error["message"] == "some_model_error"

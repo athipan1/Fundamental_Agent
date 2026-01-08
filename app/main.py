@@ -35,20 +35,25 @@ def analyze_ticker(request: TickerRequest, req: Request):
     # Check if the analysis failed
     if "error" in analysis_result:
         error_reason = analysis_result["error"]
+        error_code = "ANALYSIS_FAILED" # Default error code
 
-        # Map common errors to error codes
-        if "not found" in error_reason.lower():
+        if error_reason == "ticker_not_found":
             error_code = "TICKER_NOT_FOUND"
-        elif "insufficient data" in error_reason.lower():
+        elif error_reason == "data_not_enough":
             error_code = "INSUFFICIENT_DATA"
-        else:
-            error_code = "ANALYSIS_FAILED"
+        elif error_reason == "model_error":
+            error_code = "MODEL_ERROR"
 
         return {
-            "agent": "fundamental_agent",
+            "agent_type": "fundamental",
+            "version": "2.0.0",
             "status": "error",
             "timestamp": timestamp,
-            "data": None,
+            "data": {
+                "action": "hold",
+                "confidence_score": 0.0,
+                "reason": error_reason
+            },
             "error": {
                 "code": error_code,
                 "message": error_reason,
@@ -68,16 +73,15 @@ def analyze_ticker(request: TickerRequest, req: Request):
     action = action_map.get(analysis_result.get("strength"), "hold")
 
     return {
-        "agent": "fundamental_agent",
+        "agent_type": "fundamental",
+        "version": "2.0.0",
         "status": "success",
         "timestamp": timestamp,
         "data": {
-            "analysis": {
-                "action": action,
-                "confidence": analysis_result.get("score", 0.0),
-                "reason": analysis_result.get("reasoning"),
-                "source": "fundamental_agent"
-            }
+            "action": action,
+            "confidence_score": analysis_result.get("score", 0.0),
+            "reason": analysis_result.get("reasoning"),
+            "source": "fundamental_agent"
         },
         "error": None,
         "metadata": {}
