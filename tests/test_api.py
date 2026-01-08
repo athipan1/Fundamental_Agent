@@ -24,11 +24,15 @@ def test_analyze_endpoint_success_growth(mock_run_analysis):
     )
     assert response.status_code == 200
     data = response.json()
-    assert "analysis" in data
-    assert data["analysis"]["action"] == "buy"
-    assert data["analysis"]["confidence"] == 0.75
-    assert data["analysis"]["reason"] == "Strong growth prospects."
-    assert data["analysis"]["source"] == "fundamental_agent"
+    assert data["agent"] == "fundamental_agent"
+    assert data["status"] == "success"
+    assert data["error"] is None
+    assert "analysis" in data["data"]
+    analysis = data["data"]["analysis"]
+    assert analysis["action"] == "buy"
+    assert analysis["confidence"] == 0.75
+    assert analysis["reason"] == "Strong growth prospects."
+    assert analysis["source"] == "fundamental_agent"
     mock_run_analysis.assert_called_with("AAPL", "growth", correlation_id="test-growth-123")
 
 
@@ -43,45 +47,51 @@ def test_analyze_endpoint_success_value(mock_run_analysis):
     response = client.post("/analyze", json={"ticker": "MSFT", "style": "value"})
     assert response.status_code == 200
     data = response.json()
-    assert "analysis" in data
-    assert data["analysis"]["action"] == "hold"
-    assert data["analysis"]["confidence"] == 0.5
-    assert data["analysis"]["source"] == "fundamental_agent"
+    assert data["status"] == "success"
+    assert "analysis" in data["data"]
+    analysis = data["data"]["analysis"]
+    assert analysis["action"] == "hold"
+    assert analysis["confidence"] == 0.5
+    assert analysis["source"] == "fundamental_agent"
 
 
 @patch('app.main.run_analysis')
 def test_analyze_endpoint_ticker_not_found(mock_run_analysis):
     """Test the response for a ticker that is not found."""
-    mock_run_analysis.return_value = {"error": "ticker_not_found"}
+    mock_run_analysis.return_value = {"error": "Ticker XYZ not found"}
     response = client.post("/analyze", json={"ticker": "INVALIDTICKER"})
     assert response.status_code == 200
     data = response.json()
-    assert "analysis" in data
-    assert data["analysis"]["action"] == "hold"
-    assert data["analysis"]["confidence"] == 0.0
-    assert data["analysis"]["reason"] == "ticker_not_found"
-    assert data["analysis"]["source"] == "fundamental_agent"
+    assert data["status"] == "error"
+    assert data["data"] is None
+    error = data["error"]
+    assert error["code"] == "TICKER_NOT_FOUND"
+    assert error["message"] == "Ticker XYZ not found"
+    assert not error["retryable"]
 
 
 @patch('app.main.run_analysis')
 def test_analyze_endpoint_insufficient_data(mock_run_analysis):
     """Test the response when there is not enough data for analysis."""
-    mock_run_analysis.return_value = {"error": "data_not_enough"}
+    mock_run_analysis.return_value = {"error": "Insufficient data for analysis"}
     response = client.post("/analyze", json={"ticker": "NODATA"})
     assert response.status_code == 200
     data = response.json()
-    assert "analysis" in data
-    assert data["analysis"]["reason"] == "data_not_enough"
-    assert data["analysis"]["action"] == "hold"
+    assert data["status"] == "error"
+    assert data["data"] is None
+    error = data["error"]
+    assert error["code"] == "INSUFFICIENT_DATA"
+    assert error["message"] == "Insufficient data for analysis"
 
 
 @patch('app.main.run_analysis')
 def test_analyze_endpoint_model_error(mock_run_analysis):
     """Test the response when the analysis model fails."""
-    mock_run_analysis.return_value = {"error": "model_error"}
+    mock_run_analysis.return_value = {"error": "some_model_error"}
     response = client.post("/analyze", json={"ticker": "FAILMODEL"})
     assert response.status_code == 200
     data = response.json()
-    assert "analysis" in data
-    assert data["analysis"]["reason"] == "model_error"
-    assert data["analysis"]["action"] == "hold"
+    assert data["status"] == "error"
+    error = data["error"]
+    assert error["code"] == "ANALYSIS_FAILED"
+    assert error["message"] == "some_model_error"
