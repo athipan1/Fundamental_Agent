@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Literal
 from .fundamental_agent import run_analysis
+from datetime import datetime
 
 app = FastAPI()
 
@@ -29,16 +30,31 @@ def analyze_ticker(request: TickerRequest, req: Request):
         correlation_id=correlation_id
     )
 
+    timestamp = datetime.utcnow().isoformat() + "Z"
+
     # Check if the analysis failed
     if "error" in analysis_result:
         error_reason = analysis_result["error"]
+
+        # Map common errors to error codes
+        if "not found" in error_reason.lower():
+            error_code = "TICKER_NOT_FOUND"
+        elif "insufficient data" in error_reason.lower():
+            error_code = "INSUFFICIENT_DATA"
+        else:
+            error_code = "ANALYSIS_FAILED"
+
         return {
-            "analysis": {
-                "action": "hold",
-                "confidence": 0.0,
-                "reason": error_reason,
-                "source": "fundamental_agent"
-            }
+            "agent": "fundamental_agent",
+            "status": "error",
+            "timestamp": timestamp,
+            "data": None,
+            "error": {
+                "code": error_code,
+                "message": error_reason,
+                "retryable": False
+            },
+            "metadata": {}
         }
 
     # --- Process successful analysis ---
@@ -52,10 +68,17 @@ def analyze_ticker(request: TickerRequest, req: Request):
     action = action_map.get(analysis_result.get("strength"), "hold")
 
     return {
-        "analysis": {
-            "action": action,
-            "confidence": analysis_result.get("score", 0.0),
-            "reason": analysis_result.get("reasoning"),
-            "source": "fundamental_agent"
-        }
+        "agent": "fundamental_agent",
+        "status": "success",
+        "timestamp": timestamp,
+        "data": {
+            "analysis": {
+                "action": action,
+                "confidence": analysis_result.get("score", 0.0),
+                "reason": analysis_result.get("reasoning"),
+                "source": "fundamental_agent"
+            }
+        },
+        "error": None,
+        "metadata": {}
     }
