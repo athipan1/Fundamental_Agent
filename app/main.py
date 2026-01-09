@@ -35,7 +35,7 @@ def analyze_ticker(request: TickerRequest, req: Request):
     # Check if the analysis failed
     if "error" in analysis_result:
         error_reason = analysis_result["error"]
-        error_code = "ANALYSIS_FAILED" # Default error code
+        error_code = "ANALYSIS_FAILED"  # Default error code
 
         if error_reason == "ticker_not_found":
             error_code = "TICKER_NOT_FOUND"
