@@ -556,7 +556,8 @@ def analyze_financials(ticker: str, data: dict, style: str = "growth") -> dict:
         "reasoning": reasoning,
         "score": score,
         "score_details": score_details,
-        "key_metrics": data,  # Return the raw data for full report
+        "key_metrics": data,
+        "analysis_source": "llm"  # Indicate the source of the analysis
     }
 
 
