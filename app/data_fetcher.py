@@ -1,10 +1,12 @@
 import yfinance as yf
 from .exceptions import TickerNotFound, InsufficientData
+from . import cache_handler
 
 
 def get_financial_data(ticker: str) -> dict:
     """
     Fetches key financial data for a given stock ticker, returning raw numbers.
+    It uses a cache to avoid redundant API calls.
 
     Args:
         ticker: The stock ticker symbol (e.g., 'AAPL').
@@ -16,6 +18,13 @@ def get_financial_data(ticker: str) -> dict:
         TickerNotFound: If the ticker is invalid or no data is found for it.
         InsufficientData: If some data is found, but key metrics are missing.
     """
+    cache_key = f"financial_data_{ticker}"
+    cached_data = cache_handler.load_from_cache(cache_key)
+    if cached_data:
+        print(f"Cache hit for financial data: {ticker}")
+        return cached_data
+
+    print(f"Cache miss for financial data: {ticker}. Fetching from yfinance.")
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
@@ -83,6 +92,8 @@ def get_financial_data(ticker: str) -> dict:
             last_5_years_dividends = dividends.resample('YE').sum().tail(5).to_dict()
             data['Dividend History'] = last_5_years_dividends
 
+        # --- Cache successful data fetch ---
+        cache_handler.save_to_cache(cache_key, data)
         return data
 
     except (TickerNotFound, InsufficientData) as e:
