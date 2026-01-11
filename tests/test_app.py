@@ -1,13 +1,14 @@
-import sys
 import os
+import sys
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-# Add the project root to the Python path
+# Add the project root to the Python path before local imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app.fundamental_agent import run_analysis
-from app.exceptions import ModelError
+from app.fundamental_agent import run_analysis  # noqa: E402
+from app.exceptions import ModelError  # noqa: E402
+
 
 class TestFundamentalAgent(unittest.TestCase):
 

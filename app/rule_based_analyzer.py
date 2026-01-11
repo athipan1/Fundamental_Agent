@@ -5,6 +5,7 @@ key metrics for different investment styles.
 """
 from .analyzer import generate_actionable_strength
 
+
 def _analyze_growth(data: dict) -> dict:
     """Rule-based analysis for Growth style."""
     revenue_growth = data.get("Revenue Growth", 0) or 0
@@ -42,6 +43,7 @@ def _analyze_growth(data: dict) -> dict:
         "key_metrics": data,
         "analysis_source": "rule_based_fallback"
     }
+
 
 def _analyze_value(data: dict) -> dict:
     """Rule-based analysis for Value style."""
@@ -81,6 +83,7 @@ def _analyze_value(data: dict) -> dict:
         "analysis_source": "rule_based_fallback"
     }
 
+
 def _analyze_dividend(data: dict) -> dict:
     """Rule-based analysis for Dividend style."""
     dividend_yield = data.get("Dividend Yield", 0) or 0
@@ -105,7 +108,6 @@ def _analyze_dividend(data: dict) -> dict:
         conditions_met.append("Debt to Equity Ratio < 100")
     else:
         conditions_not_met.append("Debt to Equity Ratio >= 100")
-
 
     score = min(score, 1.0)
     reasoning = (

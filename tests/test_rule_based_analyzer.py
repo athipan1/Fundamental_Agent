@@ -1,11 +1,12 @@
-import sys
 import os
+import sys
 import unittest
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app.rule_based_analyzer import run_rule_based_analysis
+from app.rule_based_analyzer import run_rule_based_analysis  # noqa: E402
+
 
 class TestRuleBasedAnalyzer(unittest.TestCase):
 
