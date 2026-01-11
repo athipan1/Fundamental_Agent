@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime, timedelta
+from typing import Optional
 
 CACHE_DIR = "cache"
 CACHE_DURATION_HOURS = 24
@@ -28,7 +29,7 @@ def is_cache_valid(key: str) -> bool:
         return False
 
 
-def load_from_cache(key: str) -> dict | None:
+def load_from_cache(key: str) -> Optional[dict]:
     if not is_cache_valid(key):
         return None
 
