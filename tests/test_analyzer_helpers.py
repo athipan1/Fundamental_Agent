@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app.analyzer import (
+from app.analyzer import (  # noqa: E402
     get_roe_score,
     get_de_ratio_score,
     get_revenue_trend_score,
@@ -19,6 +19,7 @@ from app.analyzer import (
     get_peg_ratio_score,
     get_cash_flow_score,
 )
+
 
 class TestAnalyzerHelpers(unittest.TestCase):
 
@@ -112,6 +113,7 @@ class TestAnalyzerHelpers(unittest.TestCase):
         self.assertEqual(get_cash_flow_score(1000000), 0.10)
         self.assertEqual(get_cash_flow_score(-50000), 0.0)
         self.assertEqual(get_cash_flow_score(None), 0.0)
+
 
 if __name__ == '__main__':
     unittest.main()
