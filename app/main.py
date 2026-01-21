@@ -17,6 +17,11 @@ def read_root():
     return {"Hello": "World"}
 
 
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
+
 @app.post("/analyze")
 def analyze_ticker(request: TickerRequest, req: Request):
     """
