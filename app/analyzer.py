@@ -1,15 +1,16 @@
-from typing import Optional
 import os
 import json
-import google.generativeai as genai
+import google.genai as genai
 from dotenv import load_dotenv
 from .exceptions import ModelError
 
 load_dotenv()
 
 # Configure the Gemini API
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('models/gemini-flash-latest')
+model = None
+if os.getenv("GEMINI_API_KEY"):
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    model = genai.GenerativeModel('models/gemini-flash-latest')
 
 
 def get_roe_score(roe):
@@ -71,7 +72,7 @@ def get_revenue_trend_score(historical_revenue: dict) -> tuple[float, str]:
     return score, trend_string
 
 
-def calculate_cagr(historical_revenue: dict) -> Optional[float]:
+def calculate_cagr(historical_revenue: dict) -> float | None:
     """Calculates the 3-year Compound Annual Growth Rate (CAGR)."""
     if not historical_revenue or len(historical_revenue) < 4:
         return None
@@ -370,7 +371,7 @@ def generate_actionable_strength(score: float) -> str:
 
 
 def create_growth_prompt(
-    data: dict, ticker: str, trend: str, cagr: Optional[float]
+    data: dict, ticker: str, trend: str, cagr: float | None
 ) -> str:
     """Creates a Chain-of-Thought prompt for the 'Growth' style."""
     # Helper for safe formatting
