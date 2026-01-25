@@ -1,7 +1,7 @@
 from typing import Optional
 import os
 import json
-import google.generativeai as genai
+import google.genai as genai
 from dotenv import load_dotenv
 from .exceptions import ModelError
 
