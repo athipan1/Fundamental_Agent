@@ -1,5 +1,6 @@
 import os
 import json
+from typing import Optional
 import google.genai as genai
 from dotenv import load_dotenv
 from .exceptions import ModelError
@@ -72,7 +73,7 @@ def get_revenue_trend_score(historical_revenue: dict) -> tuple[float, str]:
     return score, trend_string
 
 
-def calculate_cagr(historical_revenue: dict) -> float | None:
+def calculate_cagr(historical_revenue: dict) -> Optional[float]:
     """Calculates the 3-year Compound Annual Growth Rate (CAGR)."""
     if not historical_revenue or len(historical_revenue) < 4:
         return None
@@ -371,7 +372,7 @@ def generate_actionable_strength(score: float) -> str:
 
 
 def create_growth_prompt(
-    data: dict, ticker: str, trend: str, cagr: float | None
+    data: dict, ticker: str, trend: str, cagr: Optional[float]
 ) -> str:
     """Creates a Chain-of-Thought prompt for the 'Growth' style."""
     # Helper for safe formatting

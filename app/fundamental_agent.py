@@ -1,5 +1,6 @@
 import argparse
 import json
+from typing import Optional
 from .data_fetcher import get_financial_data
 from .analyzer import analyze_financials
 from .rule_based_analyzer import run_rule_based_analysis
@@ -7,7 +8,7 @@ from .exceptions import TickerNotFound, InsufficientData, ModelError
 from . import cache_handler
 
 
-def run_analysis(ticker: str, style: str = "growth", correlation_id: str | None = None):
+def run_analysis(ticker: str, style: str = "growth", correlation_id: Optional[str] = None):
     """
     Runs the fundamental analysis for a given stock ticker.
     It uses a cache to avoid redundant API calls for both data and final analysis.
