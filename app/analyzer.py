@@ -1,15 +1,17 @@
-from typing import Optional
 import os
 import json
-import google.generativeai as genai
+from typing import Optional
+import google.genai as genai
 from dotenv import load_dotenv
 from .exceptions import ModelError
 
 load_dotenv()
 
 # Configure the Gemini API
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('models/gemini-flash-latest')
+model = None
+if os.getenv("GEMINI_API_KEY"):
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    model = genai.GenerativeModel('models/gemini-flash-latest')
 
 
 def get_roe_score(roe):
