@@ -28,4 +28,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: myorg/fundamental-agent:latest
+          tags: painaidee/fundamental-agent:latest
