@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Literal
 from .fundamental_agent import run_analysis
-from datetime import datetime
 from .models import StandardResponse, Action
 
 app = FastAPI()
