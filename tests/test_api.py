@@ -31,7 +31,7 @@ def test_analyze_endpoint_success_growth(mock_run_analysis):
 
     analysis_data = data["data"]
     assert analysis_data["action"] == "buy"
-    assert analysis_data["confidence_score"] == 0.75
+    assert analysis_data["confidence"] == 0.75
     assert analysis_data["reason"] == "Strong growth prospects."
     assert analysis_data["source"] == "fundamental_agent"
 
@@ -55,7 +55,7 @@ def test_analyze_endpoint_success_value(mock_run_analysis):
 
     analysis_data = data["data"]
     assert analysis_data["action"] == "hold"
-    assert analysis_data["confidence_score"] == 0.5
+    assert analysis_data["confidence"] == 0.5
     assert analysis_data["source"] == "fundamental_agent"
 
 
@@ -70,7 +70,7 @@ def test_analyze_endpoint_ticker_not_found(mock_run_analysis):
 
     error_data = data["data"]
     assert error_data["action"] == "hold"
-    assert error_data["confidence_score"] == 0.0
+    assert error_data["confidence"] == 0.0
     assert error_data["reason"] == "ticker_not_found"
 
     error = data["error"]
@@ -90,7 +90,7 @@ def test_analyze_endpoint_insufficient_data(mock_run_analysis):
 
     error_data = data["data"]
     assert error_data["action"] == "hold"
-    assert error_data["confidence_score"] == 0.0
+    assert error_data["confidence"] == 0.0
     assert error_data["reason"] == "data_not_enough"
 
     error = data["error"]
@@ -109,7 +109,7 @@ def test_analyze_endpoint_model_error(mock_run_analysis):
 
     error_data = data["data"]
     assert error_data["action"] == "hold"
-    assert error_data["confidence_score"] == 0.0
+    assert error_data["confidence"] == 0.0
     assert error_data["reason"] == "some_model_error"
 
     error = data["error"]
