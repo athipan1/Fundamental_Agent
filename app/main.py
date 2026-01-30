@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Literal
 from .fundamental_agent import run_analysis
 from datetime import datetime
+from .models import StandardResponse, Action
 
 app = FastAPI()
 
@@ -35,8 +36,6 @@ def analyze_ticker(request: TickerRequest, req: Request):
         correlation_id=correlation_id
     )
 
-    timestamp = datetime.utcnow().isoformat() + "Z"
-
     # Check if the analysis failed
     if "error" in analysis_result:
         error_reason = analysis_result["error"]
@@ -49,45 +48,36 @@ def analyze_ticker(request: TickerRequest, req: Request):
         elif error_reason == "model_error":
             error_code = "MODEL_ERROR"
 
-        return {
-            "agent_type": "fundamental",
-            "version": "2.0.0",
-            "status": "error",
-            "timestamp": timestamp,
-            "data": {
-                "action": "hold",
-                "confidence_score": 0.0,
+        return StandardResponse(
+            status="error",
+            data={
+                "action": Action.HOLD,
+                "confidence": 0.0,
                 "reason": error_reason
             },
-            "error": {
+            error={
                 "code": error_code,
                 "message": error_reason,
                 "retryable": False
-            },
-            "metadata": {}
-        }
+            }
+        )
 
     # --- Process successful analysis ---
     action_map = {
-        "strong_buy": "buy",
-        "buy": "buy",
-        "neutral": "hold",
-        "sell": "sell",
-        "strong_sell": "sell",
+        "strong_buy": Action.BUY,
+        "buy": Action.BUY,
+        "neutral": Action.HOLD,
+        "sell": Action.SELL,
+        "strong_sell": Action.SELL,
     }
-    action = action_map.get(analysis_result.get("strength"), "hold")
+    action = action_map.get(analysis_result.get("strength"), Action.HOLD)
 
-    return {
-        "agent_type": "fundamental",
-        "version": "2.0.0",
-        "status": "success",
-        "timestamp": timestamp,
-        "data": {
-            "action": action,
-            "confidence_score": analysis_result.get("score", 0.0),
+    return StandardResponse(
+        status="success",
+        data={
+            "action": action.value,
+            "confidence": analysis_result.get("score", 0.0),
             "reason": analysis_result.get("reasoning"),
             "source": "fundamental_agent"
-        },
-        "error": None,
-        "metadata": {}
-    }
+        }
+    )
