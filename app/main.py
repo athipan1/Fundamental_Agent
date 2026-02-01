@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Literal
 from .fundamental_agent import run_analysis
-from .models import StandardResponse, Action
+from .models import StandardResponse, Action, FundamentalAnalysisData, HealthData
 
 app = FastAPI()
 
@@ -17,12 +17,15 @@ def read_root():
     return {"Hello": "World"}
 
 
-@app.get("/health")
+@app.get("/health", response_model=StandardResponse[HealthData])
 def health():
-    return {"status": "ok"}
+    return StandardResponse(
+        status="success",
+        data=HealthData(status="healthy")
+    )
 
 
-@app.post("/analyze")
+@app.post("/analyze", response_model=StandardResponse[FundamentalAnalysisData])
 def analyze_ticker(request: TickerRequest, req: Request):
     """
     Analyzes a stock ticker and returns a standardized analysis response.
@@ -49,11 +52,11 @@ def analyze_ticker(request: TickerRequest, req: Request):
 
         return StandardResponse(
             status="error",
-            data={
-                "action": Action.HOLD,
-                "confidence": 0.0,
-                "reason": error_reason
-            },
+            data=FundamentalAnalysisData(
+                action=Action.HOLD,
+                confidence_score=0.0,
+                reason=error_reason
+            ),
             error={
                 "code": error_code,
                 "message": error_reason,
@@ -73,10 +76,10 @@ def analyze_ticker(request: TickerRequest, req: Request):
 
     return StandardResponse(
         status="success",
-        data={
-            "action": action.value,
-            "confidence": analysis_result.get("score", 0.0),
-            "reason": analysis_result.get("reasoning"),
-            "source": "fundamental_agent"
-        }
+        data=FundamentalAnalysisData(
+            action=action,
+            confidence_score=analysis_result.get("score", 0.0),
+            reason=analysis_result.get("reasoning", "ไม่สามารถสร้างคำวิเคราะห์ได้"),
+            source="fundamental_agent"
+        )
     )

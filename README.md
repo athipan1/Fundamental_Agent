@@ -33,7 +33,7 @@
 | `version` | `string` | เวอร์ชันปัจจุบันของระบบ |
 | `status` | `string` | สถานะการทำงาน (`"success"` หรือ `"error"`) |
 | `timestamp` | `string` | เวลาที่สร้างผลลัพธ์ (รูปแบบ ISO 8601 UTC ลงท้ายด้วย 'Z') |
-| `data` | `object` | ข้อมูลผลลัพธ์หลัก (ประกอบด้วย `action`, `confidence`, `reason`, `source`) |
+| `data` | `object` | ข้อมูลผลลัพธ์หลัก (ประกอบด้วย `action`, `confidence_score`, `reason`, `source`) |
 | `error` | `object` | ข้อมูลข้อผิดพลาด (จะมีค่าเมื่อ `status` เป็น `"error"`) |
 | `metadata` | `object` | ข้อมูลส่วนขยายอื่นๆ |
 
@@ -41,7 +41,7 @@
 | ฟิลด์ | ประเภท (Type) | คำอธิบาย |
 | :--- | :--- | :--- |
 | `action` | `string` | คำแนะนำเบื้องต้น: `"buy"`, `"hold"`, หรือ `"sell"` |
-| `confidence` | `float` | คะแนนความมั่นใจหรือคะแนนพื้นฐานหุ้น (ค่าระหว่าง 0.0 ถึง 1.0) |
+| `confidence_score` | `float` | คะแนนความมั่นใจหรือคะแนนพื้นฐานหุ้น (ค่าระหว่าง 0.0 ถึง 1.0) |
 | `reason` | `string` | บทวิเคราะห์สรุปเชิงคุณภาพภาษาไทย |
 | `source` | `string` | แหล่งที่มาของผลลัพธ์ (เช่น `"fundamental_agent"`) |
 
@@ -54,7 +54,18 @@
 
 ### 2. ตรวจสอบสถานะระบบ (Health Check)
 **Endpoint:** `GET /health`
-- **Response:** `{"status": "ok"}`
+- **Response:**
+```json
+{
+  "agent_type": "fundamental",
+  "version": "2.0.0",
+  "status": "success",
+  "timestamp": "2024-05-20T10:00:00Z",
+  "data": {
+    "status": "healthy"
+  }
+}
+```
 
 ### 3. หน้าแรก (Root)
 **Endpoint:** `GET /`
