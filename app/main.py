@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, Dict
 from .fundamental_agent import run_analysis
-from .models import StandardResponse, Action, FundamentalAnalysisData, HealthData
+from .models import StandardAgentResponse, Action, FundamentalAnalysisData, HealthData
 
 app = FastAPI()
 
@@ -12,20 +12,23 @@ class TickerRequest(BaseModel):
     style: Literal["growth", "value", "dividend"] = "growth"
 
 
-@app.get("/")
+@app.get("/", response_model=StandardAgentResponse[Dict[str, str]])
 def read_root():
-    return {"Hello": "World"}
+    return StandardAgentResponse(
+        status="success",
+        data={"message": "Hello World"}
+    )
 
 
-@app.get("/health", response_model=StandardResponse[HealthData])
+@app.get("/health", response_model=StandardAgentResponse[HealthData])
 def health():
-    return StandardResponse(
+    return StandardAgentResponse(
         status="success",
         data=HealthData(status="healthy")
     )
 
 
-@app.post("/analyze", response_model=StandardResponse[FundamentalAnalysisData])
+@app.post("/analyze", response_model=StandardAgentResponse[FundamentalAnalysisData])
 def analyze_ticker(request: TickerRequest, req: Request):
     """
     Analyzes a stock ticker and returns a standardized analysis response.
@@ -50,7 +53,7 @@ def analyze_ticker(request: TickerRequest, req: Request):
         elif error_reason == "model_error":
             error_code = "MODEL_ERROR"
 
-        return StandardResponse(
+        return StandardAgentResponse(
             status="error",
             data=FundamentalAnalysisData(
                 action=Action.HOLD,
@@ -74,7 +77,7 @@ def analyze_ticker(request: TickerRequest, req: Request):
     }
     action = action_map.get(analysis_result.get("strength"), Action.HOLD)
 
-    return StandardResponse(
+    return StandardAgentResponse(
         status="success",
         data=FundamentalAnalysisData(
             action=action,

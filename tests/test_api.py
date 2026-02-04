@@ -125,3 +125,13 @@ def test_health_endpoint():
     assert data["status"] == "success"
     assert data["agent_type"] == "fundamental"
     assert data["data"]["status"] == "healthy"
+
+
+def test_root_endpoint():
+    """Test the root endpoint."""
+    response = client.get("/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["agent_type"] == "fundamental"
+    assert data["data"]["message"] == "Hello World"

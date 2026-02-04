@@ -26,13 +26,13 @@
 | `ticker` | `string` | สัญลักษณ์หุ้นที่ต้องการวิเคราะห์ (เช่น "AAPL", "MSFT") |
 | `style` | `string` | สไตล์การลงทุน: `"growth"`, `"value"`, หรือ `"dividend"` (Default: `"growth"`) |
 
-#### Response Body (`StandardResponse`)
+#### Response Body (`StandardAgentResponse`)
 | ฟิลด์ | ประเภท (Type) | คำอธิบาย |
 | :--- | :--- | :--- |
 | `agent_type` | `string` | ประเภทของเอเจนต์ (ค่าเริ่มต้นคือ `"fundamental"`) |
 | `version` | `string` | เวอร์ชันปัจจุบันของระบบ |
 | `status` | `string` | สถานะการทำงาน (`"success"` หรือ `"error"`) |
-| `timestamp` | `string` | เวลาที่สร้างผลลัพธ์ (รูปแบบ ISO 8601 UTC ลงท้ายด้วย 'Z') |
+| `timestamp` | `datetime` | เวลาที่สร้างผลลัพธ์ (รูปแบบ ISO 8601 UTC) |
 | `data` | `object` | ข้อมูลผลลัพธ์หลัก (ประกอบด้วย `action`, `confidence_score`, `reason`, `source`) |
 | `error` | `object` | ข้อมูลข้อผิดพลาด (จะมีค่าเมื่อ `status` เป็น `"error"`) |
 | `metadata` | `object` | ข้อมูลส่วนขยายอื่นๆ |
@@ -69,7 +69,18 @@
 
 ### 3. หน้าแรก (Root)
 **Endpoint:** `GET /`
-- **Response:** `{"Hello": "World"}`
+- **Response:**
+```json
+{
+  "agent_type": "fundamental",
+  "version": "2.0.0",
+  "status": "success",
+  "timestamp": "2024-05-20T10:00:00Z",
+  "data": {
+    "message": "Hello World"
+  }
+}
+```
 
 ---
 
