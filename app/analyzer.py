@@ -231,9 +231,50 @@ def calculate_growth_score(data: dict, trend_score: float) -> dict:
     except (ValueError, TypeError):
         return {k: 0.0 for k in scores}
     # Normalize and round
+    # Max possible score for growth model is 1.65
     for key in scores:
         scores[key] = round(scores[key], 2)
-    scores["total"] = min(round(scores["total"], 2), 1.0)
+    scores["total"] = min(round(scores["total"] / 1.65, 2), 1.0)
+    return scores
+
+
+def calculate_quality_score(data: dict) -> dict:
+    """
+    Calculates a score based on Quality Investing principles.
+    Focuses on high ROE, low debt, consistent margins, and positive cash flow.
+    """
+    scores = {
+        "profitability": 0.0, "stability": 0.0, "earnings_quality": 0.0, "total": 0.0
+    }
+    try:
+        # --- Factors ---
+        roe = data.get("ROE") or 0.0
+        de_ratio = (data.get("Debt to Equity Ratio") or float('inf')) / 100.0
+        margins = data.get("Profit Margins") or 0.0
+        cash_flow = data.get("Operating Cash Flow")
+        eps = data.get("EPS")
+
+        # --- Scoring ---
+        # Profitability Factors (High Weight)
+        scores["profitability"] += get_roe_score(roe) * 1.5
+        scores["profitability"] += get_margins_score(margins) * 1.5
+
+        # Stability Factors (High Weight)
+        scores["stability"] += get_de_ratio_score(de_ratio) * 2.0
+
+        # Earnings Quality
+        scores["earnings_quality"] += get_cash_flow_score(cash_flow)
+        scores["earnings_quality"] += get_eps_score(eps)
+
+        scores["total"] = sum(scores.values())
+    except (ValueError, TypeError):
+        return {k: 0.0 for k in scores}
+
+    # Normalize and round
+    # Max possible score for quality model is 1.075
+    for key in scores:
+        scores[key] = round(scores[key], 2)
+    scores["total"] = min(round(scores["total"] / 1.075, 2), 1.0)
     return scores
 
 
@@ -276,9 +317,10 @@ def calculate_value_score(data: dict) -> dict:
         return {k: 0.0 for k in scores}
 
     # Normalize and round
+    # Max possible score for value model is 1.45
     for key in scores:
         scores[key] = round(scores[key], 2)
-    scores["total"] = min(round(scores["total"], 2), 1.0)
+    scores["total"] = min(round(scores["total"] / 1.45, 2), 1.0)
     return scores
 
 
@@ -380,6 +422,11 @@ def create_growth_prompt(
         return f"{value:{format_spec}}" if isinstance(value, (int, float)) else "N/A"
 
     formatted_data = {
+        # Context
+        "Sector": data.get('Sector', 'N/A'),
+        "Industry": data.get('Industry', 'N/A'),
+        "Market Cap": f"${data.get('Market Cap', 0):,.0f}" if data.get('Market Cap') else 'N/A',
+
         # Growth
         "Revenue Growth (YoY)": format_value(data.get('Revenue Growth'), '.2%'),
         "EPS Growth (YoY)": format_value(data.get('EPS Growth'), '.2%'),
@@ -404,7 +451,8 @@ def create_growth_prompt(
     data_string = "\n".join([f"- {key}: {value}" for key, value in formatted_data.items()])
     prompt = (
         f"คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์หุ้นเติบโต (Growth Investing)\n"
-        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} และสรุปภาพรวมในรูปแบบย่อหน้าเดียวที่คมชัดและลึกซึ้ง\n"
+        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} ({data.get('Industry', 'ไม่ระบุอุตสาหกรรม')}) "
+        f"และสรุปภาพรวมในรูปแบบย่อหน้าเดียวที่คมชัดและลึกซึ้ง\n"
         f"**ข้อมูลที่มี:**\n{data_string}\n\n"
         f"**กฎเหล็ก (Guardrails):**\n"
         f"1.  **ห้าม** สร้างข้อมูลหรือตัวเลขใดๆ ที่ไม่มีอยู่ใน `ข้อมูลที่มี` โดยเด็ดขาด\n"
@@ -429,12 +477,60 @@ def create_growth_prompt(
     return prompt
 
 
+def create_quality_prompt(data: dict, ticker: str) -> str:
+    """Creates a Chain-of-Thought prompt for the 'Quality' style."""
+    def format_value(value, format_spec):
+        return f"{value:{format_spec}}" if isinstance(value, (int, float)) else "N/A"
+
+    formatted_data = {
+        # Context
+        "Sector": data.get('Sector', 'N/A'),
+        "Industry": data.get('Industry', 'N/A'),
+        "Market Cap": f"${data.get('Market Cap', 0):,.0f}" if data.get('Market Cap') else 'N/A',
+
+        # Quality Factors
+        "Return on Equity (ROE)": format_value(data.get('ROE'), '.2%'),
+        "Debt to Equity Ratio": format_value(data.get('Debt to Equity Ratio'), '.2f'),
+        "Profit Margins": format_value(data.get('Profit Margins'), '.2%'),
+        "Operating Cash Flow": f"${data.get('Operating Cash Flow', 0):,.0f}",
+        "Earnings Per Share (EPS)": format_value(data.get('EPS'), '.2f'),
+    }
+
+    data_string = "\n".join([f"- {key}: {value}" for key, value in formatted_data.items()])
+    prompt = (
+        f"คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์หุ้นคุณภาพสูง (Quality Investing)\n"
+        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} ({data.get('Industry', 'ไม่ระบุอุตสาหกรรม')}) "
+        f"เพื่อประเมินความแข็งแกร่งและความทนทานของธุรกิจ\n"
+        f"**ข้อมูลที่มี:**\n{data_string}\n\n"
+        f"**กฎเหล็ก (Guardrails):**\n"
+        f"1. **ห้าม** สร้างข้อมูลใดๆ ที่ไม่มีอยู่โดยเด็ดขาด\n"
+        f"2. วิเคราะห์จากข้อมูลที่ให้มาเท่านั้น\n"
+        f"3. คำตอบทั้งหมดต้องเป็นภาษาไทย\n\n"
+        f"**กระบวนการคิด (Chain of Thought) สำหรับหุ้นคุณภาพ:**\n"
+        f"1. **ประเมินความสามารถในการทำกำไร (Profitability):** ดูที่ ROE และ Profit Margins "
+        f"ROE ที่สูงแสดงถึงประสิทธิภาพในการใช้ทุน และ Margin ที่กว้างแสดงถึงความได้เปรียบทางการแข่งขัน (Moat)\n"
+        f"2. **ประเมินความแข็งแกร่งทางการเงิน (Financial Strength):** ดูที่ Debt to Equity Ratio "
+        f"บริษัทที่มีคุณภาพควรมีภาระหนี้ที่เหมาะสมและไม่เสี่ยงจนเกินไป\n"
+        f"3. **ประเมินคุณภาพของกำไร (Earnings Quality):** ดูที่ Operating Cash Flow ว่าเป็นบวกและสอดคล้องกับกำไรหรือไม่ "
+        f"และดู EPS ว่าเป็นบวกหรือไม่\n"
+        f"4. **สรุปภาพรวม:** สังเคราะห์ข้อมูลเพื่อสรุปว่าบริษัทนี้เป็นธุรกิจที่มีคุณภาพสูง "
+        f"มีความแข็งแกร่งทางการเงิน และมีความน่าเชื่อถือในการดำเนินงานหรือไม่\n\n"
+        f"**ผลลัพธ์ที่ต้องการ:**\nเขียนบทวิเคราะห์สรุป (ย่อหน้าเดียว) ตามกระบวนการคิดข้างต้น"
+    )
+    return prompt
+
+
 def create_value_prompt(data: dict, ticker: str) -> str:
     """Creates a Chain-of-Thought prompt for the 'Value' style."""
     def format_value(value, format_spec):
         return f"{value:{format_spec}}" if isinstance(value, (int, float)) else "N/A"
 
     formatted_data = {
+        # Context
+        "Sector": data.get('Sector', 'N/A'),
+        "Industry": data.get('Industry', 'N/A'),
+        "Market Cap": f"${data.get('Market Cap', 0):,.0f}" if data.get('Market Cap') else 'N/A',
+
         # Valuation
         "P/E Ratio": format_value(data.get('P/E Ratio'), '.2f'),
         "P/B Ratio": format_value(data.get('P/B Ratio'), '.2f'),
@@ -450,7 +546,7 @@ def create_value_prompt(data: dict, ticker: str) -> str:
     data_string = "\n".join([f"- {key}: {value}" for key, value in formatted_data.items()])
     prompt = (
         f"คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์หุ้นคุณค่า (Value Investing)\n"
-        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} "
+        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} ({data.get('Industry', 'ไม่ระบุอุตสาหกรรม')}) "
         f"เพื่อค้นหา 'Margin of Safety' และสรุปภาพรวม\n"
         f"**ข้อมูลที่มี:**\n{data_string}\n\n"
         f"**กฎเหล็ก (Guardrails):**\n"
@@ -479,6 +575,11 @@ def create_dividend_prompt(data: dict, ticker: str, sustainability: str) -> str:
         return f"{value:{format_spec}}" if isinstance(value, (int, float)) else "N/A"
 
     formatted_data = {
+        # Context
+        "Sector": data.get('Sector', 'N/A'),
+        "Industry": data.get('Industry', 'N/A'),
+        "Market Cap": f"${data.get('Market Cap', 0):,.0f}" if data.get('Market Cap') else 'N/A',
+
         "Dividend Yield": format_value(data.get('Dividend Yield'), '.2%'),
         "Dividend Sustainability": sustainability,
         "Debt to Equity Ratio": format_value(data.get('Debt to Equity Ratio'), '.2f'),
@@ -489,7 +590,7 @@ def create_dividend_prompt(data: dict, ticker: str, sustainability: str) -> str:
     data_string = "\n".join([f"- {key}: {value}" for key, value in formatted_data.items()])
     prompt = (
         f"คุณคือผู้เชี่ยวชาญด้านการวิเคราะห์หุ้นปันผล (Dividend Investing)\n"
-        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} "
+        f"**คำสั่ง:** วิเคราะห์ข้อมูลทางการเงินของบริษัท {ticker} ({data.get('Industry', 'ไม่ระบุอุตสาหกรรม')}) "
         f"เพื่อประเมินความน่าสนใจและความยั่งยืนของเงินปันผล\n"
         f"**ข้อมูลที่มี:**\n{data_string}\n\n"
         f"**กฎเหล็ก (Guardrails):**\n"
@@ -535,6 +636,9 @@ def analyze_financials(ticker: str, data: dict, style: str = "growth") -> dict:
     elif style == "dividend":
         score_details = calculate_dividend_score(data)
         prompt = create_dividend_prompt(data, ticker, sustainability_string)
+    elif style == "quality":
+        score_details = calculate_quality_score(data)
+        prompt = create_quality_prompt(data, ticker)
     else:
         raise ValueError(f"Invalid analysis style: {style}")
 

@@ -48,6 +48,11 @@ def get_financial_data(ticker: str) -> dict:
         peg_ratio = info.get('pegRatio')
         operating_cashflow = info.get('operatingCashflow')
 
+        # --- Context Extraction ---
+        sector = info.get('sector')
+        industry = info.get('industry')
+        market_cap = info.get('marketCap')
+
         # Check if we got any valid core data at all.
         core_metrics = [
             roe, debt_to_equity, profit_margins, pe_ratio, dividend_yield,
@@ -70,6 +75,9 @@ def get_financial_data(ticker: str) -> dict:
             "Forward P/E": forward_pe,
             "PEG Ratio": peg_ratio,
             "Operating Cash Flow": operating_cashflow,
+            "Sector": sector,
+            "Industry": industry,
+            "Market Cap": market_cap,
         }
 
         # --- Historical Revenue Data ---
