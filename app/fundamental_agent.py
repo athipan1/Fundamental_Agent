@@ -15,7 +15,7 @@ def run_analysis(ticker: str, style: str = "growth", correlation_id: Optional[st
 
     Args:
         ticker (str): The stock ticker symbol.
-        style (str): The analysis style ('growth', 'value', 'dividend').
+        style (str): The analysis style ('growth', 'value', 'dividend', 'quality').
         correlation_id (Optional[str]): The correlation ID for tracing.
 
     Returns:
@@ -85,7 +85,7 @@ def main():
         "--style",
         type=str,
         default="growth",
-        choices=["growth", "value", "dividend"],
+        choices=["growth", "value", "dividend", "quality"],
         help="The investment analysis style."
     )
     args = parser.parse_args()
