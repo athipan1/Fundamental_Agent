@@ -12,7 +12,7 @@ class Action(str, Enum):
 
 class StandardAgentData(BaseModel):
     action: Action
-    confidence_score: float
+    confidence_score: float = Field(..., ge=0.0, le=1.0)
     reason: str
 
 
@@ -29,11 +29,11 @@ T = TypeVar("T")
 
 class StandardAgentResponse(BaseModel, Generic[T]):
     agent_type: str = "fundamental"
-    version: str = "2.0.0"
+    version: str = "1.0.0"
     status: Literal["success", "error"]
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
-    data: T
+    data: Optional[T] = None
     error: Optional[Dict[str, Any]] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
