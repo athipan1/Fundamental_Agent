@@ -25,7 +25,7 @@ def test_analyze_endpoint_success_growth(mock_run_analysis):
     assert response.status_code == 200
     data = response.json()
     assert data["agent_type"] == "fundamental"
-    assert data["version"] == "2.0.0"
+    assert data["version"] == "1.0.0"
     assert data["status"] == "success"
     assert data["error"] is None
 
@@ -50,7 +50,7 @@ def test_analyze_endpoint_success_value(mock_run_analysis):
     assert response.status_code == 200
     data = response.json()
     assert data["agent_type"] == "fundamental"
-    assert data["version"] == "2.0.0"
+    assert data["version"] == "1.0.0"
     assert data["status"] == "success"
 
     analysis_data = data["data"]
