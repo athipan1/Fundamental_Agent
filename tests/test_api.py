@@ -117,7 +117,7 @@ def test_analyze_endpoint_model_error(mock_run_analysis):
     assert error["message"] == "some_model_error"
 
 
- def test_health_endpoint():
+def test_health_endpoint():
     """Test the health check endpoint."""
     response = client.get("/health")
     assert response.status_code == 200
