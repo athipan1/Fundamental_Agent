@@ -27,6 +27,10 @@ FROM python:3.12-slim
 # Set the working directory.
 WORKDIR /app
 
+# Install curl for Docker healthcheck.
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user to run the application.
 RUN addgroup --system appuser && adduser --system --ingroup appuser appuser
 
