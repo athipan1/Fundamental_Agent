@@ -9,7 +9,7 @@ app = FastAPI()
 
 class TickerRequest(BaseModel):
     ticker: str
-    style: Literal["growth", "value", "dividend"] = "growth"
+    style: Literal["growth", "value", "dividend", "quality"] = "growth"
 
 
 @app.get("/", response_model=StandardAgentResponse[Dict[str, str]])

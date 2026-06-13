@@ -127,6 +127,45 @@ def _analyze_dividend(data: dict) -> dict:
     }
 
 
+def _analyze_quality(data: dict) -> dict:
+    """Rule-based analysis for Quality style."""
+    roe = data.get("ROE", 0) or 0
+    de_ratio = data.get("Debt to Equity Ratio", float('inf')) or float('inf')
+
+    score = 0.3
+    conditions_met = []
+    conditions_not_met = []
+
+    if roe > 0.15:
+        score += 0.35
+        conditions_met.append("ROE > 15%")
+    else:
+        conditions_not_met.append("ROE <= 15%")
+
+    if de_ratio < 100:
+        score += 0.35
+        conditions_met.append("Debt to Equity Ratio < 100")
+    else:
+        conditions_not_met.append("Debt to Equity Ratio >= 100")
+
+    score = min(score, 1.0)
+    reasoning = (
+        "วิเคราะห์ตามกฎพื้นฐาน (Rule-based Fallback): "
+        f"หุ้นคุณภาพพิจารณาจากเงื่อนไข: ROE > 15% และ Debt to Equity Ratio < 100. "
+        f"ผลลัพธ์: [Met: {', '.join(conditions_met) if conditions_met else 'None'}] "
+        f"[Not Met: {', '.join(conditions_not_met) if conditions_not_met else 'None'}]."
+    )
+
+    return {
+        "strength": generate_actionable_strength(score),
+        "reasoning": reasoning,
+        "score": round(score, 2),
+        "score_details": {"quality": round(score, 2)},
+        "key_metrics": data,
+        "analysis_source": "rule_based_fallback"
+    }
+
+
 def run_rule_based_analysis(ticker: str, data: dict, style: str) -> dict:
     """
     Runs the appropriate rule-based analysis based on the investment style.
@@ -137,6 +176,8 @@ def run_rule_based_analysis(ticker: str, data: dict, style: str) -> dict:
         return _analyze_value(data)
     if style == "dividend":
         return _analyze_dividend(data)
+    if style == "quality":
+        return _analyze_quality(data)
     else:
         # Default to 'value' analysis if style is unknown
         return _analyze_value(data)
