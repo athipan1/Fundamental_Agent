@@ -48,6 +48,8 @@ USER appuser
 
 # Make the virtual environment's Python the default.
 ENV PATH="/opt/venv/bin:$PATH"
+ENV PORT=8001
+ENV PYTHONPATH=/app
 
 # Expose the port the app runs on.
 EXPOSE 8001
