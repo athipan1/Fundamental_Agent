@@ -80,8 +80,14 @@ def _build_data_from_quote_and_fast_info(ticker: str, stock, info: dict) -> dict
     enterprise_value = info.get("enterpriseValue") or quote.get("enterpriseValue")
     total_revenue = info.get("totalRevenue")
     gross_profits = info.get("grossProfits")
+    net_income = (
+        info.get("netIncomeToCommon")
+        or info.get("netIncome")
+        or info.get("netIncomeApplicableToCommonShares")
+    )
 
     fcf_margin = _safe_ratio(free_cash_flow, total_revenue)
+    cash_conversion = _safe_ratio(free_cash_flow, net_income)
     gross_margin = _safe_ratio(gross_profits, total_revenue) or info.get("grossMargins")
     roic_proxy = _safe_ratio(ebitda, enterprise_value)
     interest_coverage_proxy = _safe_ratio(ebitda, info.get("interestExpense") or info.get("totalInterestExpense"))
@@ -98,6 +104,7 @@ def _build_data_from_quote_and_fast_info(ticker: str, stock, info: dict) -> dict
         "Operating Margin": info.get("operatingMargins"),
         "Gross Margin": gross_margin,
         "FCF Margin": fcf_margin,
+        "Cash Conversion": cash_conversion,
         "Interest Coverage": info.get("interestCoverage") or interest_coverage_proxy,
         "P/E Ratio": info.get("trailingPE") or quote.get("trailingPE"),
         "Dividend Yield": info.get("dividendYield") or quote.get("dividendYield"),
@@ -111,6 +118,7 @@ def _build_data_from_quote_and_fast_info(ticker: str, stock, info: dict) -> dict
         "PEG Ratio": info.get("pegRatio"),
         "Operating Cash Flow": operating_cash_flow,
         "Free Cash Flow": free_cash_flow,
+        "Net Income": net_income,
         "Total Revenue": total_revenue,
         "Total Debt": total_debt,
         "Total Cash": total_cash,
@@ -168,6 +176,7 @@ def get_financial_data(ticker: str) -> dict:
             data.get("Profit Margins"),
             data.get("Operating Margin"),
             data.get("FCF Margin"),
+            data.get("Cash Conversion"),
             data.get("Interest Coverage"),
             data.get("P/E Ratio"),
             data.get("Dividend Yield"),
@@ -181,6 +190,7 @@ def get_financial_data(ticker: str) -> dict:
             data.get("PEG Ratio"),
             data.get("Operating Cash Flow"),
             data.get("Free Cash Flow"),
+            data.get("Net Income"),
         ]
         if all(metric is None for metric in core_metrics):
             data["Data Quality Warning"] = "fundamental_metrics_sparse"
@@ -190,6 +200,11 @@ def get_financial_data(ticker: str) -> dict:
             if financials is not None and not financials.empty:
                 if 'Total Revenue' in financials.index:
                     data['Historical Revenue'] = _series_to_recent_dict(financials.loc['Total Revenue'], limit=4)
+                if 'Net Income' in financials.index:
+                    data['Historical Net Income'] = _series_to_recent_dict(financials.loc['Net Income'], limit=4)
+                    if data.get("Net Income") is None:
+                        values = list(data['Historical Net Income'].values())
+                        data["Net Income"] = values[0] if values else None
                 if 'Free Cash Flow' in financials.index:
                     data['Historical FCF'] = _series_to_recent_dict(financials.loc['Free Cash Flow'], limit=4)
                 elif 'Operating Cash Flow' in financials.index and 'Capital Expenditure' in financials.index:
@@ -205,10 +220,22 @@ def get_financial_data(ticker: str) -> dict:
             print(f"Historical growth data fetch failed for {ticker}: {exc}")
 
         try:
+            cashflow = stock.cashflow
+            if cashflow is not None and not cashflow.empty:
+                if 'Free Cash Flow' in cashflow.index:
+                    data['Historical Free Cash Flow'] = _series_to_recent_dict(cashflow.loc['Free Cash Flow'], limit=4)
+                if 'Operating Cash Flow' in cashflow.index:
+                    data['Historical Operating Cash Flow'] = _series_to_recent_dict(cashflow.loc['Operating Cash Flow'], limit=4)
+        except Exception as exc:
+            print(f"Historical cash flow fetch failed for {ticker}: {exc}")
+
+        try:
             quarterly = stock.quarterly_financials
             if quarterly is not None and not quarterly.empty:
                 if 'Total Revenue' in quarterly.index:
                     data['Quarterly Revenue'] = _series_to_recent_dict(quarterly.loc['Total Revenue'], limit=5)
+                if 'Net Income' in quarterly.index:
+                    data['Quarterly Net Income'] = _series_to_recent_dict(quarterly.loc['Net Income'], limit=5)
                 if 'Diluted EPS' in quarterly.index:
                     data['Quarterly EPS'] = _series_to_recent_dict(quarterly.loc['Diluted EPS'], limit=5)
                 elif 'Basic EPS' in quarterly.index:
@@ -217,12 +244,17 @@ def get_financial_data(ticker: str) -> dict:
             print(f"Quarterly growth data fetch failed for {ticker}: {exc}")
 
         try:
-            dividends = stock.dividends
-            if dividends is not None and not dividends.empty:
-                last_5_years_dividends = dividends.resample('YE').sum().tail(5).to_dict()
-                data['Dividend History'] = last_5_years_dividends
+            quarterly_cashflow = stock.quarterly_cashflow
+            if quarterly_cashflow is not None and not quarterly_cashflow.empty:
+                if 'Free Cash Flow' in quarterly_cashflow.index:
+                    data['Quarterly Free Cash Flow'] = _series_to_recent_dict(quarterly_cashflow.loc['Free Cash Flow'], limit=5)
+                if 'Operating Cash Flow' in quarterly_cashflow.index:
+                    data['Quarterly Operating Cash Flow'] = _series_to_recent_dict(quarterly_cashflow.loc['Operating Cash Flow'], limit=5)
         except Exception as exc:
-            print(f"Dividend history fetch failed for {ticker}: {exc}")
+            print(f"Quarterly cash flow fetch failed for {ticker}: {exc}")
+
+        if data.get("Cash Conversion") is None:
+            data["Cash Conversion"] = _safe_ratio(data.get("Free Cash Flow"), data.get("Net Income"))
 
         cache_handler.save_to_cache(cache_key, data)
         return data
