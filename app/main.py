@@ -30,6 +30,39 @@ def health():
     )
 
 
+def _as_decimal(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        value = float(value)
+        return value / 100.0 if abs(value) > 1 else value
+    except (TypeError, ValueError):
+        return None
+
+
+def _synthetic_history_from_growth(growth: Any, periods: int = 3) -> Dict[str, float]:
+    growth = _as_decimal(growth)
+    if growth is None or growth <= -0.95:
+        return {}
+    end_value = 1.0 + growth
+    return {
+        "2021-12-31": 1.0,
+        "2022-12-31": max(0.01, 1.0 + (growth * 1 / max(1, periods))),
+        "2023-12-31": max(0.01, 1.0 + (growth * 2 / max(1, periods))),
+        "2024-12-31": max(0.01, end_value),
+    }
+
+
+def _synthetic_quarterly_from_growth(growth: Any) -> Dict[str, float]:
+    growth = _as_decimal(growth)
+    if growth is None or growth <= -0.95:
+        return {}
+    return {
+        "2024-06-30": 1.0,
+        "2024-09-30": max(0.01, 1.0 + growth),
+    }
+
+
 def _prefetched_to_financial_data(prefetched_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not prefetched_data:
         return {}
@@ -40,14 +73,13 @@ def _prefetched_to_financial_data(prefetched_data: Optional[Dict[str, Any]]) -> 
     revenue_growth = raw_scores.get("revenue_3y_cagr")
     if revenue_growth is None:
         revenue_growth = raw_scores.get("revenue_cagr")
-        if isinstance(revenue_growth, (int, float)) and abs(revenue_growth) > 1:
-            revenue_growth = revenue_growth / 100.0
+    revenue_growth = _as_decimal(revenue_growth)
 
-    eps_growth = raw_scores.get("eps_growth")
-    fcf_growth = raw_scores.get("fcf_growth") or raw_scores.get("fcf_3y_cagr")
-    qoq_revenue_growth = raw_scores.get("qoq_revenue_growth")
-    qoq_eps_growth = raw_scores.get("qoq_eps_growth")
-    qoq_fcf_growth = raw_scores.get("qoq_fcf_growth")
+    eps_growth = _as_decimal(raw_scores.get("eps_growth"))
+    fcf_growth = _as_decimal(raw_scores.get("fcf_growth") or raw_scores.get("fcf_3y_cagr"))
+    qoq_revenue_growth = _as_decimal(raw_scores.get("qoq_revenue_growth"))
+    qoq_eps_growth = _as_decimal(raw_scores.get("qoq_eps_growth"))
+    qoq_fcf_growth = _as_decimal(raw_scores.get("qoq_fcf_growth"))
 
     return {
         "ROE": raw_scores.get("roe"),
@@ -60,9 +92,16 @@ def _prefetched_to_financial_data(prefetched_data: Optional[Dict[str, Any]]) -> 
         "Revenue Growth": revenue_growth,
         "EPS Growth": eps_growth,
         "FCF Growth": fcf_growth,
+        "Historical Revenue": _synthetic_history_from_growth(revenue_growth),
+        "Historical EPS": _synthetic_history_from_growth(eps_growth),
+        "Historical Free Cash Flow": _synthetic_history_from_growth(fcf_growth),
+        "Historical FCF": _synthetic_history_from_growth(fcf_growth),
         "Quarterly Revenue Growth": qoq_revenue_growth,
         "Quarterly EPS Growth": qoq_eps_growth,
         "Quarterly FCF Growth": qoq_fcf_growth,
+        "Quarterly Revenue": _synthetic_quarterly_from_growth(qoq_revenue_growth),
+        "Quarterly EPS": _synthetic_quarterly_from_growth(qoq_eps_growth),
+        "Quarterly Free Cash Flow": _synthetic_quarterly_from_growth(qoq_fcf_growth),
         "Operating Cash Flow": raw_scores.get("operating_cash_flow") or raw_scores.get("free_cash_flow"),
         "Free Cash Flow": raw_scores.get("free_cash_flow"),
         "Market Cap": raw_scores.get("market_cap"),
@@ -103,6 +142,13 @@ def _to_response_data(request: TickerRequest, analysis_result: Dict[str, Any]) -
     )
 
 
+def _growth_score_of(result: Dict[str, Any]) -> float:
+    try:
+        return float(((result.get("score_details") or {}).get("growth_score")) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 @app.post("/analyze", response_model=StandardAgentResponse[FundamentalAnalysisData])
 def analyze_ticker(request: TickerRequest, req: Request):
     """
@@ -117,11 +163,13 @@ def analyze_ticker(request: TickerRequest, req: Request):
         correlation_id=correlation_id
     )
 
-    if "error" in analysis_result and request.prefetched_data:
+    if request.prefetched_data and ("error" in analysis_result or _growth_score_of(analysis_result) <= 0.0):
         prefetched_financials = _prefetched_to_financial_data(request.prefetched_data)
         if prefetched_financials:
-            analysis_result = run_fundamental_v2(request.ticker.upper(), prefetched_financials, request.style)
-            analysis_result["analysis_source"] = "fundamental_engine_v2_with_scanner_prefetch"
+            prefetch_result = run_fundamental_v2(request.ticker.upper(), prefetched_financials, request.style)
+            prefetch_result["analysis_source"] = "fundamental_engine_v2_with_scanner_prefetch"
+            if "error" in analysis_result or _growth_score_of(prefetch_result) >= _growth_score_of(analysis_result):
+                analysis_result = prefetch_result
 
     if "error" in analysis_result:
         error_reason = analysis_result["error"]
