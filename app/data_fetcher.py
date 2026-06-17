@@ -16,6 +16,15 @@ def _safe_get_fast_info(stock, key):
         return None
 
 
+def _safe_ratio(numerator, denominator):
+    try:
+        if numerator is None or denominator in (None, 0):
+            return None
+        return float(numerator) / float(denominator)
+    except Exception:
+        return None
+
+
 def _fetch_quote_summary(ticker: str) -> dict:
     symbol = urllib.parse.quote(ticker.upper())
     url = (
@@ -50,11 +59,34 @@ def _build_data_from_quote_and_fast_info(ticker: str, stock, info: dict) -> dict
         or _safe_get_fast_info(stock, "last_price")
     )
     market_cap = info.get("marketCap") or quote.get("marketCap") or _safe_get_fast_info(stock, "market_cap")
+    operating_cash_flow = info.get("operatingCashflow")
+    free_cash_flow = info.get("freeCashflow")
+    total_debt = info.get("totalDebt")
+    total_cash = info.get("totalCash")
+    ebitda = info.get("ebitda")
+    enterprise_value = info.get("enterpriseValue") or quote.get("enterpriseValue")
+    total_revenue = info.get("totalRevenue")
+    gross_profits = info.get("grossProfits")
+
+    # Conservative proxies when providers do not expose direct values.
+    fcf_margin = _safe_ratio(free_cash_flow, total_revenue)
+    gross_margin = _safe_ratio(gross_profits, total_revenue) or info.get("grossMargins")
+    roic_proxy = _safe_ratio(ebitda, enterprise_value)
+    interest_coverage_proxy = _safe_ratio(ebitda, info.get("interestExpense") or info.get("totalInterestExpense"))
+    net_cash = None
+    if total_cash is not None or total_debt is not None:
+        net_cash = float(total_cash or 0) - float(total_debt or 0)
 
     data = {
         "ROE": info.get("returnOnEquity"),
+        "ROA": info.get("returnOnAssets"),
+        "ROIC": info.get("returnOnCapital") or info.get("returnOnInvestedCapital") or roic_proxy,
         "Debt to Equity Ratio": info.get("debtToEquity"),
         "Profit Margins": info.get("profitMargins"),
+        "Operating Margin": info.get("operatingMargins"),
+        "Gross Margin": gross_margin,
+        "FCF Margin": fcf_margin,
+        "Interest Coverage": info.get("interestCoverage") or interest_coverage_proxy,
         "P/E Ratio": info.get("trailingPE") or quote.get("trailingPE"),
         "Dividend Yield": info.get("dividendYield") or quote.get("dividendYield"),
         "P/B Ratio": info.get("priceToBook") or quote.get("priceToBook"),
@@ -63,9 +95,18 @@ def _build_data_from_quote_and_fast_info(ticker: str, stock, info: dict) -> dict
         "EPS Growth": info.get("earningsGrowth"),
         "Forward P/E": info.get("forwardPE") or quote.get("forwardPE"),
         "PEG Ratio": info.get("pegRatio"),
-        "Operating Cash Flow": info.get("operatingCashflow"),
+        "Operating Cash Flow": operating_cash_flow,
+        "Free Cash Flow": free_cash_flow,
+        "Total Revenue": total_revenue,
+        "Total Debt": total_debt,
+        "Total Cash": total_cash,
+        "Net Cash": net_cash,
+        "EBITDA": ebitda,
+        "Enterprise Value": enterprise_value,
         "Regular Market Price": price,
         "Market Cap": market_cap,
+        "Sector": info.get("sector"),
+        "Industry": info.get("industry"),
         "Short Name": info.get("shortName") or quote.get("shortName") or quote.get("longName"),
         "Exchange": quote.get("fullExchangeName") or quote.get("exchange"),
         "Currency": quote.get("currency"),
@@ -77,16 +118,6 @@ def get_financial_data(ticker: str) -> dict:
     """
     Fetches key financial data for a given stock ticker, returning raw numbers.
     It uses yfinance first, then Yahoo quote endpoint/fast_info fallback.
-
-    Args:
-        ticker: The stock ticker symbol (e.g., 'AAPL').
-
-    Returns:
-        A dictionary containing the financial data.
-
-    Raises:
-        TickerNotFound: If the ticker is invalid or no price/identity data is found for it.
-        InsufficientData: If some data is found, but key metrics are missing.
     """
     ticker = ticker.upper().strip()
     cache_key = f"financial_data_{ticker}"
@@ -106,7 +137,6 @@ def get_financial_data(ticker: str) -> dict:
 
         data = _build_data_from_quote_and_fast_info(ticker, stock, info)
 
-        # A real ticker should have at least price, market cap, short name, or exchange.
         identity_fields = [
             data.get("Regular Market Price"),
             data.get("Market Cap"),
@@ -116,11 +146,15 @@ def get_financial_data(ticker: str) -> dict:
         if all(value is None for value in identity_fields):
             raise TickerNotFound(f"No data found for ticker '{ticker}'. It may be delisted or invalid.")
 
-        # Check if we got any valid analytical data at all.
         core_metrics = [
             data.get("ROE"),
+            data.get("ROA"),
+            data.get("ROIC"),
             data.get("Debt to Equity Ratio"),
             data.get("Profit Margins"),
+            data.get("Operating Margin"),
+            data.get("FCF Margin"),
+            data.get("Interest Coverage"),
             data.get("P/E Ratio"),
             data.get("Dividend Yield"),
             data.get("P/B Ratio"),
@@ -130,21 +164,17 @@ def get_financial_data(ticker: str) -> dict:
             data.get("Forward P/E"),
             data.get("PEG Ratio"),
             data.get("Operating Cash Flow"),
+            data.get("Free Cash Flow"),
         ]
         if all(metric is None for metric in core_metrics):
-            # Keep valid identity/price data and allow rule-based analyzer to work
-            # with a conservative fallback rather than classifying as ticker_not_found.
             data["Data Quality Warning"] = "fundamental_metrics_sparse"
 
-        # --- Historical Revenue Data ---
         try:
             financials = stock.financials
             if financials is not None and not financials.empty:
                 if 'Total Revenue' in financials.index:
                     revenue_data = financials.loc['Total Revenue']
-                    # Get the last 4 years of data
                     last_four_years = revenue_data.iloc[:4].to_dict()
-                    # Convert Timestamps to strings for JSON compatibility
                     data['Historical Revenue'] = {
                         k.strftime('%Y-%m-%d'): v
                         for k, v in last_four_years.items()
@@ -152,17 +182,14 @@ def get_financial_data(ticker: str) -> dict:
         except Exception as exc:
             print(f"Historical revenue fetch failed for {ticker}: {exc}")
 
-        # --- Dividend History ---
         try:
             dividends = stock.dividends
             if dividends is not None and not dividends.empty:
-                # Get the last 5 years of dividend data
                 last_5_years_dividends = dividends.resample('YE').sum().tail(5).to_dict()
                 data['Dividend History'] = last_5_years_dividends
         except Exception as exc:
             print(f"Dividend history fetch failed for {ticker}: {exc}")
 
-        # --- Cache successful data fetch ---
         cache_handler.save_to_cache(cache_key, data)
         return data
 
@@ -175,12 +202,10 @@ def get_financial_data(ticker: str) -> dict:
 
 
 if __name__ == '__main__':
-    # --- Example Usage ---
     test_ticker = 'AAPL'
     financials = get_financial_data(test_ticker)
 
     if financials:
         print(f"Financial Data for {test_ticker}:")
         for key, value in financials.items():
-            # The output will now be raw numbers (or None)
             print(f"- {key}: {value} (type: {type(value).__name__})")
