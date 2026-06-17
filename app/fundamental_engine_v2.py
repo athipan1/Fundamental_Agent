@@ -147,6 +147,21 @@ def score_growth_rate(value: Any, weak: float = 0.0, strong: float = 0.25) -> fl
     return clamp(0.15 + ((value - weak) / (strong - weak)) * 0.85)
 
 
+def score_cash_conversion(value: Any) -> float:
+    value = safe_float(value)
+    if value is None:
+        return 0.0
+    if value <= 0:
+        return 0.0
+    if 0.8 <= value <= 1.8:
+        return 1.0
+    if 0.5 <= value < 0.8:
+        return 0.65
+    if 1.8 < value <= 3.0:
+        return 0.70
+    return 0.35
+
+
 def score_reasonable_pe(pe: Any, sector: str) -> float:
     pe = safe_float(pe)
     if pe is None or pe <= 0:
@@ -236,6 +251,7 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     operating_margin = safe_float(data.get("Operating Margin"))
     gross_margin = safe_float(data.get("Gross Margin"))
     fcf_margin = safe_float(data.get("FCF Margin"))
+    cash_conversion = safe_float(data.get("Cash Conversion"))
     interest_coverage = safe_float(data.get("Interest Coverage"))
     eps = safe_float(data.get("EPS"))
     revenue_growth = safe_float(data.get("Revenue Growth"))
@@ -248,6 +264,7 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     qoq_revenue_growth = calculate_qoq_growth(data.get("Quarterly Revenue"))
     qoq_eps_growth = calculate_qoq_growth(data.get("Quarterly EPS") or data.get("Quarterly Diluted EPS"))
     qoq_fcf_growth = calculate_qoq_growth(data.get("Quarterly FCF") or data.get("Quarterly Free Cash Flow"))
+    qoq_ocf_growth = calculate_qoq_growth(data.get("Quarterly Operating Cash Flow"))
     pe = safe_float(data.get("P/E Ratio"))
     forward_pe = safe_float(data.get("Forward P/E"))
     peg = safe_float(data.get("PEG Ratio"))
@@ -255,11 +272,15 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     debt_to_equity = normalize_debt_to_equity(data.get("Debt to Equity Ratio"))
     cash_flow = safe_float(data.get("Operating Cash Flow"))
     free_cash_flow = safe_float(data.get("Free Cash Flow"))
+    net_income = safe_float(data.get("Net Income"))
     total_revenue = safe_float(data.get("Total Revenue"))
     ebitda = safe_float(data.get("EBITDA"))
     enterprise_value = safe_float(data.get("Enterprise Value"))
     market_cap = safe_float(data.get("Market Cap"))
     net_cash = safe_float(data.get("Net Cash"))
+
+    if cash_conversion is None:
+        cash_conversion = safe_ratio(free_cash_flow, net_income)
 
     ev_to_ebitda = safe_ratio(enterprise_value, ebitda)
     price_to_sales = safe_ratio(market_cap, total_revenue)
@@ -308,9 +329,13 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     ]), 4)
 
     cash_flow_score = round(weighted_average([
-        (score_higher_better(cash_flow, 0.0, 10_000_000_000), 0.40),
-        (score_higher_better(free_cash_flow, 0.0, 10_000_000_000), 0.35),
-        (score_higher_better(fcf_margin, 0.02, 0.18), 0.25),
+        (score_higher_better(cash_flow, 0.0, 10_000_000_000), 0.18),
+        (score_higher_better(free_cash_flow, 0.0, 10_000_000_000), 0.22),
+        (score_higher_better(fcf_margin, 0.02, 0.18), 0.20),
+        (score_growth_rate(fcf_3y_cagr, 0.0, 0.20), 0.15),
+        (score_growth_rate(qoq_fcf_growth, -0.02, 0.10), 0.05),
+        (score_growth_rate(qoq_ocf_growth, -0.02, 0.10), 0.05),
+        (score_cash_conversion(cash_conversion), 0.15),
     ]), 4)
 
     total_score = round(
@@ -331,12 +356,18 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
         risk_flags.append("negative_operating_cash_flow")
     if free_cash_flow is not None and free_cash_flow < 0:
         risk_flags.append("negative_free_cash_flow")
+    if fcf_margin is not None and fcf_margin < 0.02:
+        risk_flags.append("weak_fcf_margin")
+    if cash_conversion is not None and cash_conversion < 0.5 and (net_income or 0) > 0:
+        risk_flags.append("poor_cash_conversion")
     if revenue_growth is not None and revenue_growth < 0:
         risk_flags.append("revenue_decline")
     if revenue_3y_cagr is not None and revenue_3y_cagr < 0:
         risk_flags.append("negative_3y_revenue_growth")
     if fcf_3y_cagr is not None and fcf_3y_cagr < 0:
         risk_flags.append("negative_3y_fcf_growth")
+    if qoq_fcf_growth is not None and qoq_fcf_growth < -0.10:
+        risk_flags.append("sharp_qoq_fcf_decline")
     if qoq_revenue_growth is not None and qoq_revenue_growth < -0.05:
         risk_flags.append("sharp_qoq_revenue_decline")
     if eps is not None and eps < 0:
@@ -381,6 +412,7 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
             "operating_margin": operating_margin,
             "gross_margin": gross_margin,
             "fcf_margin": fcf_margin,
+            "cash_conversion": cash_conversion,
             "interest_coverage": interest_coverage,
             "eps": eps,
             "revenue_growth": revenue_growth,
@@ -391,6 +423,7 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
             "qoq_revenue_growth": qoq_revenue_growth,
             "qoq_eps_growth": qoq_eps_growth,
             "qoq_fcf_growth": qoq_fcf_growth,
+            "qoq_ocf_growth": qoq_ocf_growth,
             "quarterly_revenue_growth": quarterly_revenue_growth,
             "quarterly_eps_growth": quarterly_eps_growth,
             "pe_ratio": pe,
@@ -407,6 +440,7 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
             "debt_to_equity": debt_to_equity,
             "operating_cash_flow": cash_flow,
             "free_cash_flow": free_cash_flow,
+            "net_income": net_income,
             "market_cap": market_cap,
             "net_cash": net_cash,
         },
@@ -422,6 +456,8 @@ def action_from_score(score: float, risk_flags: List[str]) -> str:
         "weak_interest_coverage",
         "expensive_ev_ebitda",
         "expensive_price_to_fcf",
+        "poor_cash_conversion",
+        "weak_fcf_margin",
     }
     severe_count = len(severe_flags.intersection(set(risk_flags or [])))
     if score >= 0.72 and severe_count == 0:
@@ -446,6 +482,8 @@ def build_reason(ticker: str, breakdown: Dict[str, Any]) -> str:
         f"FCF 3Y CAGR={metrics.get('fcf_3y_cagr')}, QoQ Revenue={metrics.get('qoq_revenue_growth')}. "
         f"Valuation inputs: EV/EBITDA={metrics.get('ev_to_ebitda')}, P/S={metrics.get('price_to_sales')}, "
         f"P/FCF={metrics.get('price_to_fcf')}, FCF Yield={metrics.get('fcf_yield')}. "
+        f"Cash inputs: OCF={metrics.get('operating_cash_flow')}, FCF={metrics.get('free_cash_flow')}, "
+        f"FCF Margin={metrics.get('fcf_margin')}, Cash Conversion={metrics.get('cash_conversion')}. "
         f"Sector={breakdown['sector']}. Risk flags: {flag_text}."
     )
 
