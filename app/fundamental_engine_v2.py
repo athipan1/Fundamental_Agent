@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from statistics import median
 from typing import Any, Dict, List, Optional
 
 
@@ -66,11 +64,20 @@ def score_lower_better(value: Any, strong: float, weak: float) -> float:
     return clamp((weak - value) / (weak - strong))
 
 
+def weighted_average(parts: List[tuple[float, float]]) -> float:
+    active = [(score, weight) for score, weight in parts if score > 0]
+    if not active:
+        return 0.0
+    total_weight = sum(weight for _, weight in active)
+    if total_weight <= 0:
+        return 0.0
+    return sum(score * weight for score, weight in active) / total_weight
+
+
 def normalize_debt_to_equity(value: Any) -> Optional[float]:
     value = safe_float(value)
     if value is None:
         return None
-    # yfinance sometimes returns D/E as percentage, e.g. 85 means 0.85.
     if value > 10:
         return value / 100.0
     return value
@@ -125,7 +132,6 @@ def infer_sector(data: Dict[str, Any]) -> str:
     sector = data.get("Sector") or data.get("sector")
     if sector:
         return str(sector)
-    exchange = str(data.get("Exchange") or "").lower()
     short_name = str(data.get("Short Name") or "").lower()
     if any(word in short_name for word in ["bank", "financial", "insurance", "capital"]):
         return "Financial Services"
@@ -148,7 +154,13 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     weights = SECTOR_RULES.get(sector, SECTOR_RULES["default"])
 
     roe = safe_float(data.get("ROE"))
+    roa = safe_float(data.get("ROA"))
+    roic = safe_float(data.get("ROIC"))
     margins = safe_float(data.get("Profit Margins"))
+    operating_margin = safe_float(data.get("Operating Margin"))
+    gross_margin = safe_float(data.get("Gross Margin"))
+    fcf_margin = safe_float(data.get("FCF Margin"))
+    interest_coverage = safe_float(data.get("Interest Coverage"))
     eps = safe_float(data.get("EPS"))
     revenue_growth = safe_float(data.get("Revenue Growth"))
     eps_growth = safe_float(data.get("EPS Growth"))
@@ -159,14 +171,22 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     pb = safe_float(data.get("P/B Ratio"))
     debt_to_equity = normalize_debt_to_equity(data.get("Debt to Equity Ratio"))
     cash_flow = safe_float(data.get("Operating Cash Flow"))
+    free_cash_flow = safe_float(data.get("Free Cash Flow"))
     market_cap = safe_float(data.get("Market Cap"))
+    net_cash = safe_float(data.get("Net Cash"))
 
-    quality_score = round((
-        score_higher_better(roe, 0.04, 0.22) * 0.40
-        + score_higher_better(margins, 0.02, 0.25) * 0.30
-        + score_higher_better(eps, 0.0, 5.0) * 0.15
-        + score_higher_better(market_cap, 1_000_000_000, 100_000_000_000) * 0.15
-    ), 4)
+    quality_score = round(weighted_average([
+        (score_higher_better(roe, 0.04, 0.22), 0.20),
+        (score_higher_better(roa, 0.02, 0.12), 0.12),
+        (score_higher_better(roic, 0.04, 0.18), 0.16),
+        (score_higher_better(margins, 0.02, 0.25), 0.14),
+        (score_higher_better(operating_margin, 0.04, 0.25), 0.12),
+        (score_higher_better(gross_margin, 0.15, 0.60), 0.08),
+        (score_higher_better(fcf_margin, 0.02, 0.18), 0.08),
+        (score_higher_better(interest_coverage, 2.0, 12.0), 0.06),
+        (score_higher_better(eps, 0.0, 5.0), 0.02),
+        (score_higher_better(market_cap, 1_000_000_000, 100_000_000_000), 0.02),
+    ]), 4)
 
     growth_inputs = [
         score_higher_better(revenue_growth, 0.0, 0.25),
@@ -182,24 +202,19 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
         + score_lower_better(pb, 0.7, 8.0) * 0.15
     ), 4)
 
-    financial_health_score = round((
-        score_lower_better(debt_to_equity, 0.25, 2.5) * 0.55
-        + score_higher_better(cash_flow, 0.0, 5_000_000_000) * 0.30
-        + score_higher_better(margins, 0.02, 0.20) * 0.15
-    ), 4)
+    financial_health_score = round(weighted_average([
+        (score_lower_better(debt_to_equity, 0.25, 2.5), 0.40),
+        (score_higher_better(cash_flow, 0.0, 5_000_000_000), 0.20),
+        (score_higher_better(free_cash_flow, 0.0, 5_000_000_000), 0.15),
+        (score_higher_better(interest_coverage, 2.0, 12.0), 0.15),
+        (score_higher_better(net_cash, 0.0, 10_000_000_000), 0.10),
+    ]), 4)
 
-    cash_flow_score = round((
-        score_higher_better(cash_flow, 0.0, 10_000_000_000) * 0.70
-        + score_higher_better(margins, 0.05, 0.30) * 0.30
-    ), 4)
-
-    score_map = {
-        "quality_score": quality_score,
-        "growth_score": growth_score,
-        "valuation_score": valuation_score,
-        "financial_health_score": financial_health_score,
-        "cash_flow_score": cash_flow_score,
-    }
+    cash_flow_score = round(weighted_average([
+        (score_higher_better(cash_flow, 0.0, 10_000_000_000), 0.40),
+        (score_higher_better(free_cash_flow, 0.0, 10_000_000_000), 0.35),
+        (score_higher_better(fcf_margin, 0.02, 0.18), 0.25),
+    ]), 4)
 
     total_score = round(
         quality_score * weights["quality"]
@@ -213,8 +228,12 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     risk_flags: List[str] = []
     if debt_to_equity is not None and debt_to_equity > 2.0:
         risk_flags.append("high_debt")
+    if interest_coverage is not None and interest_coverage < 2.0:
+        risk_flags.append("weak_interest_coverage")
     if cash_flow is not None and cash_flow < 0:
         risk_flags.append("negative_operating_cash_flow")
+    if free_cash_flow is not None and free_cash_flow < 0:
+        risk_flags.append("negative_free_cash_flow")
     if revenue_growth is not None and revenue_growth < 0:
         risk_flags.append("revenue_decline")
     if eps is not None and eps < 0:
@@ -233,7 +252,11 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     }
 
     return {
-        **score_map,
+        "quality_score": quality_score,
+        "growth_score": growth_score,
+        "valuation_score": valuation_score,
+        "financial_health_score": financial_health_score,
+        "cash_flow_score": cash_flow_score,
         "confidence_score": total_score,
         "sector": sector,
         "sector_weights": weights,
@@ -241,7 +264,13 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
         "comparative_analysis": comparison,
         "key_metrics": {
             "roe": roe,
+            "roa": roa,
+            "roic": roic,
             "profit_margins": margins,
+            "operating_margin": operating_margin,
+            "gross_margin": gross_margin,
+            "fcf_margin": fcf_margin,
+            "interest_coverage": interest_coverage,
             "eps": eps,
             "revenue_growth": revenue_growth,
             "eps_growth": eps_growth,
@@ -252,13 +281,15 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
             "pb_ratio": pb,
             "debt_to_equity": debt_to_equity,
             "operating_cash_flow": cash_flow,
+            "free_cash_flow": free_cash_flow,
             "market_cap": market_cap,
+            "net_cash": net_cash,
         },
     }
 
 
 def action_from_score(score: float, risk_flags: List[str]) -> str:
-    severe_flags = {"negative_operating_cash_flow", "negative_eps", "high_debt"}
+    severe_flags = {"negative_operating_cash_flow", "negative_free_cash_flow", "negative_eps", "high_debt", "weak_interest_coverage"}
     severe_count = len(severe_flags.intersection(set(risk_flags or [])))
     if score >= 0.72 and severe_count == 0:
         return "buy"
