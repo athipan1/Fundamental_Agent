@@ -35,21 +35,42 @@ def _prefetched_to_financial_data(prefetched_data: Optional[Dict[str, Any]]) -> 
         return {}
     metadata = prefetched_data.get("metadata") or {}
     raw_scores = prefetched_data.get("raw_scores") or metadata.get("raw_scores") or {}
+    growth_metrics = metadata.get("growth_metrics") or {}
+
+    revenue_growth = raw_scores.get("revenue_3y_cagr")
+    if revenue_growth is None:
+        revenue_growth = raw_scores.get("revenue_cagr")
+        if isinstance(revenue_growth, (int, float)) and abs(revenue_growth) > 1:
+            revenue_growth = revenue_growth / 100.0
+
+    eps_growth = raw_scores.get("eps_growth")
+    fcf_growth = raw_scores.get("fcf_growth") or raw_scores.get("fcf_3y_cagr")
+    qoq_revenue_growth = raw_scores.get("qoq_revenue_growth")
+    qoq_eps_growth = raw_scores.get("qoq_eps_growth")
+    qoq_fcf_growth = raw_scores.get("qoq_fcf_growth")
+
     return {
         "ROE": raw_scores.get("roe"),
+        "ROA": raw_scores.get("roa"),
         "Debt to Equity Ratio": raw_scores.get("debt_to_equity"),
         "Profit Margins": raw_scores.get("profit_margins"),
         "P/E Ratio": raw_scores.get("pe_ratio"),
         "PEG Ratio": raw_scores.get("peg_ratio"),
         "P/B Ratio": raw_scores.get("pb_ratio"),
-        "Revenue Growth": raw_scores.get("revenue_cagr"),
-        "EPS Growth": raw_scores.get("eps_growth"),
-        "Operating Cash Flow": raw_scores.get("free_cash_flow"),
+        "Revenue Growth": revenue_growth,
+        "EPS Growth": eps_growth,
+        "FCF Growth": fcf_growth,
+        "Quarterly Revenue Growth": qoq_revenue_growth,
+        "Quarterly EPS Growth": qoq_eps_growth,
+        "Quarterly FCF Growth": qoq_fcf_growth,
+        "Operating Cash Flow": raw_scores.get("operating_cash_flow") or raw_scores.get("free_cash_flow"),
+        "Free Cash Flow": raw_scores.get("free_cash_flow"),
         "Market Cap": raw_scores.get("market_cap"),
         "Sector": metadata.get("sector") or prefetched_data.get("sector"),
         "Exchange": prefetched_data.get("exchange") or metadata.get("exchange"),
         "Short Name": prefetched_data.get("symbol") or prefetched_data.get("ticker"),
         "Data Quality Warning": "scanner_prefetched_data",
+        "Scanner Growth Metrics": growth_metrics,
     }
 
 
