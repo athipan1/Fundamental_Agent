@@ -83,6 +83,59 @@ def normalize_debt_to_equity(value: Any) -> Optional[float]:
     return value
 
 
+def ordered_numeric_values(history: Any) -> List[float]:
+    if not isinstance(history, dict):
+        return []
+    values = []
+    for key in sorted(history.keys()):
+        value = safe_float(history.get(key))
+        if value is not None:
+            values.append(value)
+    return values
+
+
+def calculate_cagr_from_history(history: Any) -> Optional[float]:
+    values = ordered_numeric_values(history)
+    if len(values) < 2:
+        return None
+    start = values[0]
+    end = values[-1]
+    periods = max(1, len(values) - 1)
+    if start is None or end is None or start <= 0 or end <= 0:
+        return None
+    try:
+        return (end / start) ** (1 / periods) - 1
+    except Exception:
+        return None
+
+
+def calculate_qoq_growth(history: Any) -> Optional[float]:
+    values = ordered_numeric_values(history)
+    if len(values) < 2:
+        return None
+    previous = values[-2]
+    latest = values[-1]
+    if previous is None or previous == 0:
+        return None
+    try:
+        return (latest - previous) / abs(previous)
+    except Exception:
+        return None
+
+
+def score_growth_rate(value: Any, weak: float = 0.0, strong: float = 0.25) -> float:
+    value = safe_float(value)
+    if value is None:
+        return 0.0
+    if value < -0.05:
+        return 0.0
+    if value <= weak:
+        return 0.15
+    if value >= strong:
+        return 1.0
+    return clamp(0.15 + ((value - weak) / (strong - weak)) * 0.85)
+
+
 def score_reasonable_pe(pe: Any, sector: str) -> float:
     pe = safe_float(pe)
     if pe is None or pe <= 0:
@@ -110,22 +163,6 @@ def score_reasonable_pe(pe: Any, sector: str) -> float:
     if pe <= 40:
         return 0.45
     return 0.10
-
-
-def calculate_historical_revenue_cagr(data: Dict[str, Any]) -> Optional[float]:
-    revenue = data.get("Historical Revenue") or {}
-    if not isinstance(revenue, dict) or len(revenue) < 2:
-        return None
-    try:
-        years = sorted(revenue.keys())
-        start = safe_float(revenue[years[0]])
-        end = safe_float(revenue[years[-1]])
-        periods = max(1, len(years) - 1)
-        if start is None or end is None or start <= 0:
-            return None
-        return (end / start) ** (1 / periods) - 1
-    except Exception:
-        return None
 
 
 def infer_sector(data: Dict[str, Any]) -> str:
@@ -164,7 +201,14 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     eps = safe_float(data.get("EPS"))
     revenue_growth = safe_float(data.get("Revenue Growth"))
     eps_growth = safe_float(data.get("EPS Growth"))
-    historical_cagr = calculate_historical_revenue_cagr(data)
+    quarterly_revenue_growth = safe_float(data.get("Quarterly Revenue Growth"))
+    quarterly_eps_growth = safe_float(data.get("Quarterly EPS Growth"))
+    revenue_3y_cagr = calculate_cagr_from_history(data.get("Historical Revenue"))
+    eps_3y_cagr = calculate_cagr_from_history(data.get("Historical EPS"))
+    fcf_3y_cagr = calculate_cagr_from_history(data.get("Historical FCF") or data.get("Historical Free Cash Flow"))
+    qoq_revenue_growth = calculate_qoq_growth(data.get("Quarterly Revenue"))
+    qoq_eps_growth = calculate_qoq_growth(data.get("Quarterly EPS"))
+    qoq_fcf_growth = calculate_qoq_growth(data.get("Quarterly FCF") or data.get("Quarterly Free Cash Flow"))
     pe = safe_float(data.get("P/E Ratio"))
     forward_pe = safe_float(data.get("Forward P/E"))
     peg = safe_float(data.get("PEG Ratio"))
@@ -188,12 +232,14 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
         (score_higher_better(market_cap, 1_000_000_000, 100_000_000_000), 0.02),
     ]), 4)
 
-    growth_inputs = [
-        score_higher_better(revenue_growth, 0.0, 0.25),
-        score_higher_better(eps_growth, 0.0, 0.25),
-        score_higher_better(historical_cagr, 0.0, 0.18),
-    ]
-    growth_score = round(sum(growth_inputs) / len(growth_inputs), 4)
+    growth_score = round(weighted_average([
+        (score_growth_rate(revenue_3y_cagr if revenue_3y_cagr is not None else revenue_growth, 0.0, 0.25), 0.30),
+        (score_growth_rate(eps_3y_cagr if eps_3y_cagr is not None else eps_growth, 0.0, 0.25), 0.25),
+        (score_growth_rate(fcf_3y_cagr, 0.0, 0.25), 0.25),
+        (score_growth_rate(qoq_revenue_growth if qoq_revenue_growth is not None else quarterly_revenue_growth, -0.02, 0.10), 0.10),
+        (score_growth_rate(qoq_eps_growth if qoq_eps_growth is not None else quarterly_eps_growth, -0.02, 0.10), 0.05),
+        (score_growth_rate(qoq_fcf_growth, -0.02, 0.10), 0.05),
+    ]), 4)
 
     valuation_score = round((
         score_reasonable_pe(pe, sector) * 0.35
@@ -236,6 +282,12 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
         risk_flags.append("negative_free_cash_flow")
     if revenue_growth is not None and revenue_growth < 0:
         risk_flags.append("revenue_decline")
+    if revenue_3y_cagr is not None and revenue_3y_cagr < 0:
+        risk_flags.append("negative_3y_revenue_growth")
+    if fcf_3y_cagr is not None and fcf_3y_cagr < 0:
+        risk_flags.append("negative_3y_fcf_growth")
+    if qoq_revenue_growth is not None and qoq_revenue_growth < -0.05:
+        risk_flags.append("sharp_qoq_revenue_decline")
     if eps is not None and eps < 0:
         risk_flags.append("negative_eps")
     if pe is not None and pe > 60:
@@ -274,7 +326,14 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
             "eps": eps,
             "revenue_growth": revenue_growth,
             "eps_growth": eps_growth,
-            "historical_revenue_cagr": historical_cagr,
+            "revenue_3y_cagr": revenue_3y_cagr,
+            "eps_3y_cagr": eps_3y_cagr,
+            "fcf_3y_cagr": fcf_3y_cagr,
+            "qoq_revenue_growth": qoq_revenue_growth,
+            "qoq_eps_growth": qoq_eps_growth,
+            "qoq_fcf_growth": qoq_fcf_growth,
+            "quarterly_revenue_growth": quarterly_revenue_growth,
+            "quarterly_eps_growth": quarterly_eps_growth,
             "pe_ratio": pe,
             "forward_pe": forward_pe,
             "peg_ratio": peg,
@@ -303,11 +362,15 @@ def action_from_score(score: float, risk_flags: List[str]) -> str:
 def build_reason(ticker: str, breakdown: Dict[str, Any]) -> str:
     flags = breakdown.get("risk_flags") or []
     flag_text = ", ".join(flags) if flags else "ไม่พบธงความเสี่ยงหลัก"
+    metrics = breakdown.get("key_metrics", {})
     return (
         f"{ticker}: คะแนนพื้นฐานรวม {breakdown['confidence_score']:.2f} "
         f"โดยแยกเป็น Quality {breakdown['quality_score']:.2f}, Growth {breakdown['growth_score']:.2f}, "
         f"Valuation {breakdown['valuation_score']:.2f}, Financial Health {breakdown['financial_health_score']:.2f}, "
-        f"Cash Flow {breakdown['cash_flow_score']:.2f}. Sector={breakdown['sector']}. Risk flags: {flag_text}."
+        f"Cash Flow {breakdown['cash_flow_score']:.2f}. "
+        f"Growth inputs: Revenue 3Y CAGR={metrics.get('revenue_3y_cagr')}, EPS 3Y CAGR={metrics.get('eps_3y_cagr')}, "
+        f"FCF 3Y CAGR={metrics.get('fcf_3y_cagr')}, QoQ Revenue={metrics.get('qoq_revenue_growth')}. "
+        f"Sector={breakdown['sector']}. Risk flags: {flag_text}."
     )
 
 
