@@ -93,8 +93,7 @@ def analyze_ticker(request: TickerRequest, req: Request):
     analysis_result = run_analysis(
         request.ticker,
         request.style,
-        correlation_id=correlation_id,
-        prefetched_data=request.prefetched_data,
+        correlation_id=correlation_id
     )
 
     if "error" in analysis_result and request.prefetched_data:
