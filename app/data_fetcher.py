@@ -25,6 +25,19 @@ def _safe_ratio(numerator, denominator):
         return None
 
 
+def _series_to_recent_dict(series, limit: int = 4) -> dict:
+    try:
+        if series is None or series.empty:
+            return {}
+        recent = series.dropna().iloc[:limit].to_dict()
+        return {
+            k.strftime('%Y-%m-%d') if hasattr(k, 'strftime') else str(k): v
+            for k, v in recent.items()
+        }
+    except Exception:
+        return {}
+
+
 def _fetch_quote_summary(ticker: str) -> dict:
     symbol = urllib.parse.quote(ticker.upper())
     url = (
@@ -68,7 +81,6 @@ def _build_data_from_quote_and_fast_info(ticker: str, stock, info: dict) -> dict
     total_revenue = info.get("totalRevenue")
     gross_profits = info.get("grossProfits")
 
-    # Conservative proxies when providers do not expose direct values.
     fcf_margin = _safe_ratio(free_cash_flow, total_revenue)
     gross_margin = _safe_ratio(gross_profits, total_revenue) or info.get("grossMargins")
     roic_proxy = _safe_ratio(ebitda, enterprise_value)
@@ -93,6 +105,8 @@ def _build_data_from_quote_and_fast_info(ticker: str, stock, info: dict) -> dict
         "EPS": info.get("trailingEps") or quote.get("epsTrailingTwelveMonths"),
         "Revenue Growth": info.get("revenueGrowth"),
         "EPS Growth": info.get("earningsGrowth"),
+        "Quarterly Revenue Growth": info.get("revenueQuarterlyGrowth") or info.get("quarterlyRevenueGrowth"),
+        "Quarterly EPS Growth": info.get("earningsQuarterlyGrowth") or info.get("quarterlyEarningsGrowthYOY"),
         "Forward P/E": info.get("forwardPE") or quote.get("forwardPE"),
         "PEG Ratio": info.get("pegRatio"),
         "Operating Cash Flow": operating_cash_flow,
@@ -161,6 +175,8 @@ def get_financial_data(ticker: str) -> dict:
             data.get("EPS"),
             data.get("Revenue Growth"),
             data.get("EPS Growth"),
+            data.get("Quarterly Revenue Growth"),
+            data.get("Quarterly EPS Growth"),
             data.get("Forward P/E"),
             data.get("PEG Ratio"),
             data.get("Operating Cash Flow"),
@@ -173,14 +189,32 @@ def get_financial_data(ticker: str) -> dict:
             financials = stock.financials
             if financials is not None and not financials.empty:
                 if 'Total Revenue' in financials.index:
-                    revenue_data = financials.loc['Total Revenue']
-                    last_four_years = revenue_data.iloc[:4].to_dict()
-                    data['Historical Revenue'] = {
-                        k.strftime('%Y-%m-%d'): v
-                        for k, v in last_four_years.items()
-                    }
+                    data['Historical Revenue'] = _series_to_recent_dict(financials.loc['Total Revenue'], limit=4)
+                if 'Free Cash Flow' in financials.index:
+                    data['Historical FCF'] = _series_to_recent_dict(financials.loc['Free Cash Flow'], limit=4)
+                elif 'Operating Cash Flow' in financials.index and 'Capital Expenditure' in financials.index:
+                    data['Historical FCF'] = _series_to_recent_dict(
+                        financials.loc['Operating Cash Flow'] + financials.loc['Capital Expenditure'],
+                        limit=4,
+                    )
+                if 'Diluted EPS' in financials.index:
+                    data['Historical EPS'] = _series_to_recent_dict(financials.loc['Diluted EPS'], limit=4)
+                elif 'Basic EPS' in financials.index:
+                    data['Historical EPS'] = _series_to_recent_dict(financials.loc['Basic EPS'], limit=4)
         except Exception as exc:
-            print(f"Historical revenue fetch failed for {ticker}: {exc}")
+            print(f"Historical growth data fetch failed for {ticker}: {exc}")
+
+        try:
+            quarterly = stock.quarterly_financials
+            if quarterly is not None and not quarterly.empty:
+                if 'Total Revenue' in quarterly.index:
+                    data['Quarterly Revenue'] = _series_to_recent_dict(quarterly.loc['Total Revenue'], limit=5)
+                if 'Diluted EPS' in quarterly.index:
+                    data['Quarterly EPS'] = _series_to_recent_dict(quarterly.loc['Diluted EPS'], limit=5)
+                elif 'Basic EPS' in quarterly.index:
+                    data['Quarterly EPS'] = _series_to_recent_dict(quarterly.loc['Basic EPS'], limit=5)
+        except Exception as exc:
+            print(f"Quarterly growth data fetch failed for {ticker}: {exc}")
 
         try:
             dividends = stock.dividends
