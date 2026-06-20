@@ -9,7 +9,7 @@ from .exceptions import TickerNotFound, InsufficientData, ModelError
 from . import cache_handler
 
 
-def _merge_llm_reasoning(v2_result: dict, llm_result: dict | None) -> dict:
+def _merge_llm_reasoning(v2_result: dict, llm_result: Optional[dict]) -> dict:
     if not llm_result:
         return v2_result
     llm_reason = llm_result.get("reasoning")
@@ -80,34 +80,13 @@ def run_analysis(ticker: str, style: str = "growth", correlation_id: Optional[st
 
 
 def main():
-    """
-    The main function for the Fundamental Analysis Agent when run as a script.
-    It takes a stock ticker, fetches its financial data, analyzes it,
-    and prints the final analysis as a JSON object.
-    """
-    parser = argparse.ArgumentParser(
-        description="Fundamental Financial Analysis Agent"
-    )
-    parser.add_argument(
-        "ticker",
-        type=str,
-        help="The stock ticker symbol to analyze (e.g., AAPL, GOOGL)."
-    )
-    parser.add_argument(
-        "--style",
-        type=str,
-        default="growth",
-        choices=["growth", "value", "dividend"],
-        help="The investment analysis style."
-    )
+    """Command line interface for running fundamental analysis."""
+    parser = argparse.ArgumentParser(description="Run fundamental analysis for a ticker.")
+    parser.add_argument("ticker")
+    parser.add_argument("--style", default="growth", choices=["growth", "value", "dividend"])
     args = parser.parse_args()
-
-    ticker = args.ticker.upper()
-    analysis_result = run_analysis(ticker, args.style)
-
-    if analysis_result:
-        print("\n--- ✅ Fundamental Analysis Complete ---")
-        print(json.dumps(analysis_result, indent=4, ensure_ascii=False))
+    result = run_analysis(args.ticker, args.style)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
