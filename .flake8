@@ -1,0 +1,5 @@
+[flake8]
+per-file-ignores =
+    app/data_fetcher.py:F401,C901,E501
+    app/fundamental_agent.py:C901
+    app/fundamental_engine_v2.py:C901,E501

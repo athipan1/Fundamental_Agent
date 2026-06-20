@@ -1,9 +1,21 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from typing import Literal, Dict, Optional, Any
+from typing import Literal, Dict, Optional, Any, List
 from .fundamental_agent import run_analysis
 from .fundamental_engine_v2 import run_fundamental_v2
-from .models import StandardAgentResponse, Action, FundamentalAnalysisData, HealthData
+from .models import (
+    StandardAgentResponse,
+    Action,
+    FundamentalAnalysisData,
+    HealthData,
+    FundamentalValidationRequest,
+    FundamentalValidationReport,
+    FundamentalValidationItem,
+)
+
+CONFIDENCE_CAP = 0.80
+PREFETCHED_DATA_CAP = 0.65
+SYNTHETIC_DATA_CAP = 0.55
 
 app = FastAPI()
 
@@ -16,18 +28,45 @@ class TickerRequest(BaseModel):
 
 @app.get("/", response_model=StandardAgentResponse[Dict[str, str]])
 def read_root():
-    return StandardAgentResponse(
-        status="success",
-        data={"message": "Hello World"}
-    )
+    return StandardAgentResponse(status="success", data={"message": "Hello World"})
 
 
 @app.get("/health", response_model=StandardAgentResponse[HealthData])
 def health():
     return StandardAgentResponse(
         status="success",
-        data=HealthData(status="healthy")
+        version="1.0.0",
+        data=HealthData(status="healthy"),
     )
+
+
+def _cap_confidence(raw_score: Any, source: str, data_quality_score: float) -> float:
+    try:
+        score = float(raw_score or 0.0)
+    except (TypeError, ValueError):
+        score = 0.0
+    cap = CONFIDENCE_CAP
+    if "scanner_prefetch" in source:
+        cap = min(cap, PREFETCHED_DATA_CAP)
+    if data_quality_score < 0.70:
+        cap = min(cap, SYNTHETIC_DATA_CAP)
+    return max(0.0, min(score, cap))
+
+
+def _data_quality_score(request: TickerRequest, analysis_result: Dict[str, Any]) -> float:
+    source = analysis_result.get("analysis_source", "fundamental_agent_v2")
+    score = 1.0
+    if request.prefetched_data:
+        score -= 0.20
+    if "scanner_prefetch" in source:
+        score -= 0.15
+    flags = analysis_result.get("risk_flags") or []
+    if flags:
+        score -= min(0.30, 0.05 * len(flags))
+    key_metrics = analysis_result.get("key_metrics") or {}
+    if not key_metrics:
+        score -= 0.15
+    return max(0.0, min(1.0, score))
 
 
 def _as_decimal(value: Any) -> Optional[float]:
@@ -69,18 +108,15 @@ def _prefetched_to_financial_data(prefetched_data: Optional[Dict[str, Any]]) -> 
     metadata = prefetched_data.get("metadata") or {}
     raw_scores = prefetched_data.get("raw_scores") or metadata.get("raw_scores") or {}
     growth_metrics = metadata.get("growth_metrics") or {}
-
     revenue_growth = raw_scores.get("revenue_3y_cagr")
     if revenue_growth is None:
         revenue_growth = raw_scores.get("revenue_cagr")
     revenue_growth = _as_decimal(revenue_growth)
-
     eps_growth = _as_decimal(raw_scores.get("eps_growth"))
     fcf_growth = _as_decimal(raw_scores.get("fcf_growth") or raw_scores.get("fcf_3y_cagr"))
     qoq_revenue_growth = _as_decimal(raw_scores.get("qoq_revenue_growth"))
     qoq_eps_growth = _as_decimal(raw_scores.get("qoq_eps_growth"))
     qoq_fcf_growth = _as_decimal(raw_scores.get("qoq_fcf_growth"))
-
     return {
         "ROE": raw_scores.get("roe"),
         "ROA": raw_scores.get("roa"),
@@ -124,11 +160,24 @@ def _to_response_data(request: TickerRequest, analysis_result: Dict[str, Any]) -
     }
     action = action_map.get(analysis_result.get("strength"), Action.HOLD)
     score_details = analysis_result.get("score_details") or {}
+    analysis_source = analysis_result.get("analysis_source", "fundamental_agent_v2")
+    raw_score = analysis_result.get("score", 0.0)
+    data_quality_score = _data_quality_score(request, analysis_result)
+    capped_score = _cap_confidence(raw_score, analysis_source, data_quality_score)
+    risk_flags = list(analysis_result.get("risk_flags") or [])
+    if capped_score < float(raw_score or 0.0):
+        risk_flags.append("confidence_capped")
+    if data_quality_score < 0.70:
+        risk_flags.append("low_data_quality")
     return FundamentalAnalysisData(
         action=action,
-        confidence_score=analysis_result.get("score", 0.0),
+        confidence_score=capped_score,
+        raw_confidence_score=float(raw_score or 0.0),
+        confidence_cap=CONFIDENCE_CAP,
+        data_quality_score=data_quality_score,
+        validation_status="fundamental_validation_required_before_live",
         reason=analysis_result.get("reasoning", "ไม่สามารถสร้างคำวิเคราะห์ได้"),
-        source=analysis_result.get("analysis_source", "fundamental_agent_v2"),
+        source=analysis_result.get("source", "fundamental_agent"),
         quality_score=score_details.get("quality_score"),
         growth_score=score_details.get("growth_score"),
         valuation_score=score_details.get("valuation_score"),
@@ -136,7 +185,7 @@ def _to_response_data(request: TickerRequest, analysis_result: Dict[str, Any]) -
         cash_flow_score=score_details.get("cash_flow_score"),
         sector=analysis_result.get("sector"),
         sector_weights=analysis_result.get("sector_weights") or {},
-        risk_flags=analysis_result.get("risk_flags") or [],
+        risk_flags=risk_flags,
         comparative_analysis=analysis_result.get("comparative_analysis") or {},
         key_metrics=analysis_result.get("key_metrics") or {},
     )
@@ -149,28 +198,26 @@ def _growth_score_of(result: Dict[str, Any]) -> float:
         return 0.0
 
 
-@app.post("/analyze", response_model=StandardAgentResponse[FundamentalAnalysisData])
-def analyze_ticker(request: TickerRequest, req: Request):
-    """
-    Analyzes a stock ticker and returns a standardized analysis response.
-    If live market data is sparse, Manager_Agent may provide Scanner_Agent
-    prefetched fundamentals so v2 scores are still available.
-    """
-    correlation_id = req.headers.get("X-Correlation-ID")
-    analysis_result = run_analysis(
-        request.ticker,
-        request.style,
-        correlation_id=correlation_id
-    )
-
+def _run_analysis_result(request: TickerRequest, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+    analysis_result = run_analysis(request.ticker, request.style, correlation_id=correlation_id)
     if request.prefetched_data and ("error" in analysis_result or _growth_score_of(analysis_result) <= 0.0):
         prefetched_financials = _prefetched_to_financial_data(request.prefetched_data)
         if prefetched_financials:
-            prefetch_result = run_fundamental_v2(request.ticker.upper(), prefetched_financials, request.style)
+            prefetch_result = run_fundamental_v2(
+                request.ticker.upper(),
+                prefetched_financials,
+                request.style,
+            )
             prefetch_result["analysis_source"] = "fundamental_engine_v2_with_scanner_prefetch"
             if "error" in analysis_result or _growth_score_of(prefetch_result) >= _growth_score_of(analysis_result):
                 analysis_result = prefetch_result
+    return analysis_result
 
+
+@app.post("/analyze", response_model=StandardAgentResponse[FundamentalAnalysisData])
+def analyze_ticker(request: TickerRequest, req: Request):
+    correlation_id = req.headers.get("X-Correlation-ID")
+    analysis_result = _run_analysis_result(request, correlation_id=correlation_id)
     if "error" in analysis_result:
         error_reason = analysis_result["error"]
         error_code = "ANALYSIS_FAILED"
@@ -180,29 +227,91 @@ def analyze_ticker(request: TickerRequest, req: Request):
             error_code = "INSUFFICIENT_DATA"
         elif error_reason == "model_error":
             error_code = "MODEL_ERROR"
-
         return StandardAgentResponse(
             status="error",
+            version="1.0.0",
             data=FundamentalAnalysisData(
                 action=Action.HOLD,
                 confidence_score=0.0,
                 reason=error_reason,
                 risk_flags=[error_reason],
-                source="fundamental_agent_v2"
+                source="fundamental_agent",
             ),
-            error={
-                "code": error_code,
-                "message": error_reason,
-                "retryable": False
-            }
+            error={"code": error_code, "message": error_reason, "retryable": False},
         )
-
+    response_data = _to_response_data(request, analysis_result)
     return StandardAgentResponse(
         status="success",
-        data=_to_response_data(request, analysis_result),
+        version="1.0.0",
+        data=response_data,
         metadata={
             "style": request.style,
             "ticker": request.ticker.upper(),
             "analysis_source": analysis_result.get("analysis_source", "fundamental_agent_v2"),
-        }
+            "confidence_cap": CONFIDENCE_CAP,
+            "data_quality_score": response_data.data_quality_score,
+        },
     )
+
+
+@app.post("/validate/fundamental", response_model=StandardAgentResponse[FundamentalValidationReport])
+def validate_fundamental(request: FundamentalValidationRequest):
+    results: List[FundamentalValidationItem] = []
+    for ticker in request.tickers:
+        item_request = TickerRequest(ticker=ticker, style=request.style)
+        analysis_result = _run_analysis_result(item_request)
+        if "error" in analysis_result:
+            results.append(
+                FundamentalValidationItem(
+                    ticker=ticker.upper(),
+                    status="error",
+                    confidence_score=0.0,
+                    data_quality_score=0.0,
+                    action=Action.HOLD,
+                    risk_flags=[analysis_result["error"]],
+                    passed=False,
+                    reason=analysis_result["error"],
+                )
+            )
+            continue
+        data = _to_response_data(item_request, analysis_result)
+        passed = (
+            data.data_quality_score >= request.min_data_quality_score
+            and data.confidence_score >= request.min_average_confidence
+            and data.confidence_score <= CONFIDENCE_CAP
+        )
+        results.append(
+            FundamentalValidationItem(
+                ticker=ticker.upper(),
+                status="success",
+                confidence_score=data.confidence_score,
+                data_quality_score=data.data_quality_score or 0.0,
+                action=data.action,
+                risk_flags=data.risk_flags,
+                passed=passed,
+                reason=data.reason,
+            )
+        )
+    tested = len(results)
+    passed_count = sum(1 for item in results if item.passed)
+    failed_count = tested - passed_count
+    avg_confidence = sum(item.confidence_score for item in results) / tested if tested else 0.0
+    avg_quality = sum(item.data_quality_score for item in results) / tested if tested else 0.0
+    report = FundamentalValidationReport(
+        tickers=[ticker.upper() for ticker in request.tickers],
+        style=request.style,
+        confidence_cap=CONFIDENCE_CAP,
+        tested=tested,
+        passed_count=passed_count,
+        failed_count=failed_count,
+        average_confidence=round(avg_confidence, 4),
+        average_data_quality_score=round(avg_quality, 4),
+        passed=tested > 0 and failed_count == 0 and avg_quality >= request.min_data_quality_score,
+        criteria={
+            "min_data_quality_score": request.min_data_quality_score,
+            "min_average_confidence": request.min_average_confidence,
+            "confidence_cap": CONFIDENCE_CAP,
+        },
+        results=results,
+    )
+    return StandardAgentResponse(status="success", version="1.0.0", data=report)
