@@ -12,11 +12,16 @@ from . import cache_handler
 def _merge_llm_reasoning(v2_result: dict, llm_result: Optional[dict]) -> dict:
     if not llm_result:
         return v2_result
+    if "source" in llm_result and "score" not in v2_result:
+        return llm_result
     llm_reason = llm_result.get("reasoning")
     if llm_reason:
         v2_result["reasoning"] = f"{v2_result.get('reasoning', '')} บทวิเคราะห์เสริม: {llm_reason}"
         v2_result["llm_reasoning"] = llm_reason
-    v2_result["analysis_source"] = "fundamental_engine_v2_with_llm" if llm_reason else v2_result.get("analysis_source")
+    if llm_reason:
+        v2_result["analysis_source"] = "fundamental_engine_v2_with_llm"
+    else:
+        v2_result.update(llm_result)
     return v2_result
 
 
@@ -24,14 +29,12 @@ def run_analysis(ticker: str, style: str = "growth", correlation_id: Optional[st
     """
     Runs the fundamental analysis for a given stock ticker.
     It uses a cache to avoid redundant API calls for both data and final analysis.
-    v2 always computes deterministic structured scores first, then optionally
-    appends LLM reasoning when available.
     """
     log_prefix = f"[{correlation_id}] " if correlation_id else ""
     ticker = ticker.upper().strip()
     print(f"{log_prefix}--- Starting fundamental analysis for {ticker} (Style: {style}) ---")
 
-    cache_key = f"analysis_v2_{ticker}_{style}"
+    cache_key = f"analysis_{ticker}_{style}"
     cached_analysis = cache_handler.load_from_cache(cache_key)
     if cached_analysis:
         print(f"{log_prefix}Cache hit for final v2 analysis: {ticker} (Style: {style})")
@@ -47,17 +50,16 @@ def run_analysis(ticker: str, style: str = "growth", correlation_id: Optional[st
         v2_result = run_fundamental_v2(ticker, financial_data, style)
         print(f"{log_prefix}Fundamental engine v2 completed.")
 
-        # Optional LLM explanation: never allow model failure to erase v2 scores.
         try:
             llm_result = analyze_financials(ticker, financial_data, style)
             print(f"{log_prefix}LLM analysis completed successfully.")
             analysis_result = _merge_llm_reasoning(v2_result, llm_result)
         except ModelError as e:
-            print(f"{log_prefix}LLM analysis failed: {e}. Keeping v2 deterministic score.")
-            analysis_result = v2_result
+            print(f"{log_prefix}LLM analysis failed: {e}. Using rule-based fallback.")
+            analysis_result = run_rule_based_analysis(ticker, financial_data, style)
         except Exception as e:
-            print(f"{log_prefix}LLM analysis unexpected failure: {e}. Keeping v2 deterministic score.")
-            analysis_result = v2_result
+            print(f"{log_prefix}LLM analysis unexpected failure: {e}. Using rule-based fallback.")
+            analysis_result = run_rule_based_analysis(ticker, financial_data, style)
 
         cache_handler.save_to_cache(cache_key, analysis_result)
         return analysis_result
