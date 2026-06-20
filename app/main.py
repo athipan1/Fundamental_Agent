@@ -35,7 +35,7 @@ def read_root():
 def health():
     return StandardAgentResponse(
         status="success",
-        version="2.1.0",
+        version="1.0.0",
         data=HealthData(status="healthy"),
     )
 
@@ -229,6 +229,7 @@ def analyze_ticker(request: TickerRequest, req: Request):
             error_code = "MODEL_ERROR"
         return StandardAgentResponse(
             status="error",
+            version="1.0.0",
             data=FundamentalAnalysisData(
                 action=Action.HOLD,
                 confidence_score=0.0,
@@ -241,7 +242,7 @@ def analyze_ticker(request: TickerRequest, req: Request):
     response_data = _to_response_data(request, analysis_result)
     return StandardAgentResponse(
         status="success",
-        version="2.1.0",
+        version="1.0.0",
         data=response_data,
         metadata={
             "style": request.style,
@@ -313,4 +314,4 @@ def validate_fundamental(request: FundamentalValidationRequest):
         },
         results=results,
     )
-    return StandardAgentResponse(status="success", version="2.1.0", data=report)
+    return StandardAgentResponse(status="success", version="1.0.0", data=report)
