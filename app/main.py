@@ -160,10 +160,10 @@ def _to_response_data(request: TickerRequest, analysis_result: Dict[str, Any]) -
     }
     action = action_map.get(analysis_result.get("strength"), Action.HOLD)
     score_details = analysis_result.get("score_details") or {}
-    source = analysis_result.get("analysis_source", "fundamental_agent_v2")
+    analysis_source = analysis_result.get("analysis_source", "fundamental_agent_v2")
     raw_score = analysis_result.get("score", 0.0)
     data_quality_score = _data_quality_score(request, analysis_result)
-    capped_score = _cap_confidence(raw_score, source, data_quality_score)
+    capped_score = _cap_confidence(raw_score, analysis_source, data_quality_score)
     risk_flags = list(analysis_result.get("risk_flags") or [])
     if capped_score < float(raw_score or 0.0):
         risk_flags.append("confidence_capped")
@@ -177,7 +177,7 @@ def _to_response_data(request: TickerRequest, analysis_result: Dict[str, Any]) -
         data_quality_score=data_quality_score,
         validation_status="fundamental_validation_required_before_live",
         reason=analysis_result.get("reasoning", "ไม่สามารถสร้างคำวิเคราะห์ได้"),
-        source=source,
+        source=analysis_result.get("source", "fundamental_agent"),
         quality_score=score_details.get("quality_score"),
         growth_score=score_details.get("growth_score"),
         valuation_score=score_details.get("valuation_score"),
@@ -235,7 +235,7 @@ def analyze_ticker(request: TickerRequest, req: Request):
                 confidence_score=0.0,
                 reason=error_reason,
                 risk_flags=[error_reason],
-                source="fundamental_agent_v2",
+                source="fundamental_agent",
             ),
             error={"code": error_code, "message": error_reason, "retryable": False},
         )
