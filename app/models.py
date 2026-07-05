@@ -4,7 +4,8 @@ from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, timezone
 
 FUNDAMENTAL_AGENT_TYPE = "fundamental"
-FUNDAMENTAL_AGENT_VERSION = "2.1.0"
+FUNDAMENTAL_AGENT_VERSION = "1.0.0"
+FUNDAMENTAL_SERVICE_VERSION = "2.1.0"
 SCHEMA_VERSION = "1.0"
 
 
