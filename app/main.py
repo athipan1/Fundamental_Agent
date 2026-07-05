@@ -29,7 +29,14 @@ class TickerRequest(BaseModel):
     prefetched_data: Optional[Dict[str, Any]] = None
 
 
-def build_response(status: str, data=None, error=None, metadata=None, correlation_id: Optional[str] = None, confidence_score=None):
+def build_response(
+    status: str,
+    data=None,
+    error=None,
+    metadata=None,
+    correlation_id: Optional[str] = None,
+    confidence_score=None,
+):
     return StandardAgentResponse(
         status=status,
         version=FUNDAMENTAL_AGENT_VERSION,
