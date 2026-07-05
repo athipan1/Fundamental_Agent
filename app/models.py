@@ -1,7 +1,12 @@
 from enum import Enum
 from typing import Optional, Any, Dict, TypeVar, Generic, Literal, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, timezone
+
+FUNDAMENTAL_AGENT_TYPE = "fundamental"
+FUNDAMENTAL_AGENT_VERSION = "1.0.0"
+FUNDAMENTAL_SERVICE_VERSION = "2.1.0"
+SCHEMA_VERSION = "1.0"
 
 
 class Action(str, Enum):
@@ -76,10 +81,21 @@ T = TypeVar("T")
 
 
 class StandardAgentResponse(BaseModel, Generic[T]):
-    agent_type: str = "fundamental"
-    version: str = "2.1.0"
+    agent_type: str = FUNDAMENTAL_AGENT_TYPE
+    version: str = FUNDAMENTAL_AGENT_VERSION
+    schema_version: str = SCHEMA_VERSION
     status: Literal["success", "error"]
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    correlation_id: Optional[str] = None
     data: Optional[T] = None
     error: Optional[Dict[str, Any]] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    confidence_score: Optional[float] = None
+
+    @field_validator("schema_version")
+    @classmethod
+    def schema_version_must_be_semantic(cls, value: str) -> str:
+        parts = value.split(".")
+        if not all(part.isdigit() for part in parts):
+            raise ValueError('Schema version must be in semantic format (e.g., "1.0")')
+        return value

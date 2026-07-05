@@ -11,13 +11,16 @@ from .models import (
     FundamentalValidationRequest,
     FundamentalValidationReport,
     FundamentalValidationItem,
+    FUNDAMENTAL_AGENT_TYPE,
+    FUNDAMENTAL_AGENT_VERSION,
+    SCHEMA_VERSION,
 )
 
 CONFIDENCE_CAP = 0.80
 PREFETCHED_DATA_CAP = 0.65
 SYNTHETIC_DATA_CAP = 0.55
 
-app = FastAPI()
+app = FastAPI(title="Fundamental Agent", version=FUNDAMENTAL_AGENT_VERSION)
 
 
 class TickerRequest(BaseModel):
@@ -26,17 +29,68 @@ class TickerRequest(BaseModel):
     prefetched_data: Optional[Dict[str, Any]] = None
 
 
+def build_response(
+    status: str,
+    data=None,
+    error=None,
+    metadata=None,
+    correlation_id: Optional[str] = None,
+    confidence_score=None,
+):
+    return StandardAgentResponse(
+        status=status,
+        version=FUNDAMENTAL_AGENT_VERSION,
+        schema_version=SCHEMA_VERSION,
+        correlation_id=correlation_id,
+        data=data,
+        error=error,
+        metadata=metadata or {},
+        confidence_score=confidence_score,
+    )
+
+
 @app.get("/", response_model=StandardAgentResponse[Dict[str, str]])
 def read_root():
-    return StandardAgentResponse(status="success", data={"message": "Hello World"})
+    return build_response(status="success", data={"message": "Hello World"})
+
+
+@app.get("/version", response_model=StandardAgentResponse[Dict[str, Any]])
+def version_check():
+    return build_response(
+        status="success",
+        data={
+            "agent_type": FUNDAMENTAL_AGENT_TYPE,
+            "version": FUNDAMENTAL_AGENT_VERSION,
+            "schema_version": SCHEMA_VERSION,
+            "api_contract": "multi-agent-trading-api-contract",
+        },
+        metadata={"required_operational_endpoints": ["/health", "/ready", "/version"]},
+    )
+
+
+@app.get("/ready", response_model=StandardAgentResponse[Dict[str, Any]])
+def readiness_check():
+    return build_response(
+        status="success",
+        data={
+            "ready": True,
+            "analysis_endpoint": "/analyze",
+            "validation_endpoint": "/validate/fundamental",
+            "supported_styles": ["growth", "value", "dividend"],
+            "confidence_cap": CONFIDENCE_CAP,
+            "prefetched_data_cap": PREFETCHED_DATA_CAP,
+            "synthetic_data_cap": SYNTHETIC_DATA_CAP,
+        },
+        metadata={"contract_source": "fundamental-agent-runtime-contract"},
+    )
 
 
 @app.get("/health", response_model=StandardAgentResponse[HealthData])
 def health():
-    return StandardAgentResponse(
+    return build_response(
         status="success",
-        version="1.0.0",
         data=HealthData(status="healthy"),
+        metadata={"confidence_cap": CONFIDENCE_CAP},
     )
 
 
@@ -227,9 +281,8 @@ def analyze_ticker(request: TickerRequest, req: Request):
             error_code = "INSUFFICIENT_DATA"
         elif error_reason == "model_error":
             error_code = "MODEL_ERROR"
-        return StandardAgentResponse(
+        return build_response(
             status="error",
-            version="1.0.0",
             data=FundamentalAnalysisData(
                 action=Action.HOLD,
                 confidence_score=0.0,
@@ -238,11 +291,12 @@ def analyze_ticker(request: TickerRequest, req: Request):
                 source="fundamental_agent",
             ),
             error={"code": error_code, "message": error_reason, "retryable": False},
+            correlation_id=correlation_id,
+            confidence_score=0.0,
         )
     response_data = _to_response_data(request, analysis_result)
-    return StandardAgentResponse(
+    return build_response(
         status="success",
-        version="1.0.0",
         data=response_data,
         metadata={
             "style": request.style,
@@ -251,15 +305,18 @@ def analyze_ticker(request: TickerRequest, req: Request):
             "confidence_cap": CONFIDENCE_CAP,
             "data_quality_score": response_data.data_quality_score,
         },
+        correlation_id=correlation_id,
+        confidence_score=response_data.confidence_score,
     )
 
 
 @app.post("/validate/fundamental", response_model=StandardAgentResponse[FundamentalValidationReport])
-def validate_fundamental(request: FundamentalValidationRequest):
+def validate_fundamental(request: FundamentalValidationRequest, req: Request):
+    correlation_id = req.headers.get("X-Correlation-ID")
     results: List[FundamentalValidationItem] = []
     for ticker in request.tickers:
         item_request = TickerRequest(ticker=ticker, style=request.style)
-        analysis_result = _run_analysis_result(item_request)
+        analysis_result = _run_analysis_result(item_request, correlation_id=correlation_id)
         if "error" in analysis_result:
             results.append(
                 FundamentalValidationItem(
@@ -314,4 +371,4 @@ def validate_fundamental(request: FundamentalValidationRequest):
         },
         results=results,
     )
-    return StandardAgentResponse(status="success", version="1.0.0", data=report)
+    return build_response(status="success", data=report, correlation_id=correlation_id)
