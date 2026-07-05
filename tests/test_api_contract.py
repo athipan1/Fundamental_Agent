@@ -23,7 +23,7 @@ REQUIRED_STANDARD_RESPONSE_FIELDS = {
 def assert_standard_response(payload):
     assert REQUIRED_STANDARD_RESPONSE_FIELDS.issubset(payload.keys())
     assert payload["agent_type"] == "fundamental"
-    assert payload["version"] == "2.1.0"
+    assert payload["version"] == "1.0.0"
     assert payload["schema_version"] == "1.0"
 
 
@@ -33,7 +33,7 @@ def test_standard_response_has_contract_defaults():
 
     assert REQUIRED_STANDARD_RESPONSE_FIELDS.issubset(payload.keys())
     assert payload["agent_type"] == "fundamental"
-    assert payload["version"] == "2.1.0"
+    assert payload["version"] == "1.0.0"
     assert payload["schema_version"] == "1.0"
     assert payload["correlation_id"] is None
     assert payload["metadata"] == {}
@@ -54,6 +54,7 @@ def test_version_endpoint_uses_standard_contract():
     assert_standard_response(payload)
     assert payload["data"]["api_contract"] == "multi-agent-trading-api-contract"
     assert payload["data"]["schema_version"] == "1.0"
+    assert payload["data"]["service_version"] == "2.1.0"
 
 
 def test_ready_endpoint_uses_standard_contract():
