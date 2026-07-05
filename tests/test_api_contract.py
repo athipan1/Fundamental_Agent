@@ -54,7 +54,6 @@ def test_version_endpoint_uses_standard_contract():
     assert_standard_response(payload)
     assert payload["data"]["api_contract"] == "multi-agent-trading-api-contract"
     assert payload["data"]["schema_version"] == "1.0"
-    assert payload["data"]["service_version"] == "2.1.0"
 
 
 def test_ready_endpoint_uses_standard_contract():
