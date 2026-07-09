@@ -32,9 +32,18 @@ _METRIC_ALIASES = {
     "eps_3y_cagr": ("eps_3y_cagr",),
     "fcf_3y_cagr": ("fcf_3y_cagr",),
     "ocf_3y_cagr": ("ocf_3y_cagr",),
-    "qoq_revenue_growth": ("qoq_revenue_growth", "quarterly_revenue_growth"),
-    "qoq_eps_growth": ("qoq_eps_growth", "quarterly_eps_growth"),
-    "qoq_fcf_growth": ("qoq_fcf_growth", "quarterly_fcf_growth"),
+    "qoq_revenue_growth": (
+        "qoq_revenue_growth",
+        "quarterly_revenue_growth",
+    ),
+    "qoq_eps_growth": (
+        "qoq_eps_growth",
+        "quarterly_eps_growth",
+    ),
+    "qoq_fcf_growth": (
+        "qoq_fcf_growth",
+        "quarterly_fcf_growth",
+    ),
     "qoq_ocf_growth": ("qoq_ocf_growth",),
     "pe_ratio": ("pe_ratio",),
     "forward_pe": ("forward_pe",),
@@ -127,7 +136,10 @@ def _metric_value(name: str, value: Any) -> Any:
     return round(number, 6) if number is not None else value
 
 
-def _evidence_status(completeness: float, missing_critical: list[str]) -> str:
+def _evidence_status(
+    completeness: float,
+    missing_critical: list[str],
+) -> str:
     if completeness >= 0.80 and not missing_critical:
         return "complete"
     if completeness >= 0.45:
@@ -141,10 +153,10 @@ def build_fundamental_evidence(
     data_quality_score: float,
     style: str,
 ) -> Dict[str, Any]:
-    """Create a versioned evidence payload for Scanner and Manager.
+    """Create versioned financial evidence for Scanner and Manager.
 
-    Fundamental_Agent publishes normalized financial evidence only. It does not
-    assign or recommend a strategy bucket; Manager remains the decision authority.
+    Fundamental_Agent publishes normalized evidence only. It never assigns a
+    strategy bucket; Manager remains the final decision authority.
     """
     analysis_result = _mapping(analysis_result)
     score_details = _mapping(analysis_result.get("score_details"))
@@ -156,11 +168,10 @@ def build_fundamental_evidence(
         if normalized is not None:
             raw_scores[field] = normalized
 
-    fundamental_score = _score01(
-        analysis_result.get("score")
-        if analysis_result.get("score") is not None
-        else analysis_result.get("confidence_score")
-    )
+    score_value = analysis_result.get("score")
+    if score_value is None:
+        score_value = analysis_result.get("confidence_score")
+    fundamental_score = _score01(score_value)
     if fundamental_score is not None:
         raw_scores["fundamental_score"] = fundamental_score
 
@@ -177,10 +188,21 @@ def build_fundamental_evidence(
         metrics["sector"] = str(sector)
 
     available_fields = sorted(raw_scores.keys())
-    expected_fields = sorted(set(_SCORE_FIELDS) | set(_METRIC_ALIASES) | {"fundamental_score"})
-    missing_fields = sorted(field for field in expected_fields if field not in raw_scores)
-    missing_critical = sorted(field for field in _CRITICAL_FIELDS if field not in raw_scores)
-    completeness = round(len(available_fields) / max(1, len(expected_fields)), 4)
+    expected_fields = sorted(
+        set(_SCORE_FIELDS)
+        | set(_METRIC_ALIASES)
+        | {"fundamental_score"}
+    )
+    missing_fields = sorted(
+        field for field in expected_fields if field not in raw_scores
+    )
+    missing_critical = sorted(
+        field for field in _CRITICAL_FIELDS if field not in raw_scores
+    )
+    completeness = round(
+        len(available_fields) / max(1, len(expected_fields)),
+        4,
+    )
     status = _evidence_status(completeness, missing_critical)
 
     reasons: list[str] = [
@@ -189,18 +211,28 @@ def build_fundamental_evidence(
         f"data_quality_score:{round(float(data_quality_score), 4)}",
     ]
     if missing_critical:
-        reasons.append("missing_critical_metrics:" + ",".join(missing_critical))
-    risk_flags = [str(flag) for flag in analysis_result.get("risk_flags") or []]
+        reasons.append(
+            "missing_critical_metrics:" + ",".join(missing_critical)
+        )
+    risk_flags = [
+        str(flag) for flag in analysis_result.get("risk_flags") or []
+    ]
     if risk_flags:
         reasons.append("risk_flags:" + ",".join(risk_flags))
 
-    source = str(analysis_result.get("analysis_source") or analysis_result.get("source") or "fundamental_agent")
+    source = str(
+        analysis_result.get("analysis_source")
+        or analysis_result.get("source")
+        or "fundamental_agent"
+    )
     provenance = {
         "analysis_source": source,
         "style": style,
         "data_quality_score": round(float(data_quality_score), 4),
         "source_fields": available_fields,
-        "synthetic_or_prefetched": "prefetch" in source or "synthetic" in source,
+        "synthetic_or_prefetched": (
+            "prefetch" in source or "synthetic" in source
+        ),
     }
 
     return {
