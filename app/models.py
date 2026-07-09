@@ -4,9 +4,10 @@ from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, timezone
 
 FUNDAMENTAL_AGENT_TYPE = "fundamental"
-FUNDAMENTAL_AGENT_VERSION = "1.0.0"
-FUNDAMENTAL_SERVICE_VERSION = "2.1.0"
+FUNDAMENTAL_AGENT_VERSION = "1.1.0"
+FUNDAMENTAL_SERVICE_VERSION = "2.2.0"
 SCHEMA_VERSION = "1.0"
+FUNDAMENTAL_EVIDENCE_VERSION = "fundamental-evidence-v1"
 
 
 class Action(str, Enum):
@@ -21,6 +22,23 @@ class StandardAgentData(BaseModel):
     reason: str
 
 
+class FundamentalEvidenceContract(BaseModel):
+    evidence_version: str = FUNDAMENTAL_EVIDENCE_VERSION
+    evidence_status: Literal["complete", "partial", "insufficient"]
+    evidence_completeness_score: float = Field(ge=0.0, le=1.0)
+    raw_scores: Dict[str, Any] = Field(default_factory=dict)
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    available_fields: List[str] = Field(default_factory=list)
+    missing_fields: List[str] = Field(default_factory=list)
+    missing_critical_metrics: List[str] = Field(default_factory=list)
+    evidence_reasons: List[str] = Field(default_factory=list)
+    risk_flags: List[str] = Field(default_factory=list)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+    strategy_bucket_hint: None = None
+    bucket_decision_authority: Literal["manager"] = "manager"
+    manager_decision_required: bool = True
+
+
 class FundamentalAnalysisData(StandardAgentData):
     source: str = "fundamental_agent"
     quality_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -28,11 +46,19 @@ class FundamentalAnalysisData(StandardAgentData):
     valuation_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     financial_health_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     cash_flow_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    fundamental_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     sector: Optional[str] = None
     sector_weights: Dict[str, float] = Field(default_factory=dict)
     risk_flags: List[str] = Field(default_factory=list)
     comparative_analysis: Dict[str, Any] = Field(default_factory=dict)
     key_metrics: Dict[str, Any] = Field(default_factory=dict)
+    raw_scores: Dict[str, Any] = Field(default_factory=dict)
+    fundamental_evidence: Optional[FundamentalEvidenceContract] = None
+    evidence_version: str = FUNDAMENTAL_EVIDENCE_VERSION
+    evidence_status: Literal["complete", "partial", "insufficient", "unavailable"] = "unavailable"
+    evidence_completeness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    manager_decision_required: bool = True
+    bucket_decision_authority: Literal["manager"] = "manager"
     confidence_cap: float = 0.80
     raw_confidence_score: Optional[float] = None
     data_quality_score: Optional[float] = None
@@ -43,6 +69,8 @@ class HealthData(BaseModel):
     status: str = "healthy"
     confidence_cap: float = 0.80
     validation_endpoint: str = "/validate/fundamental"
+    evidence_version: str = FUNDAMENTAL_EVIDENCE_VERSION
+    bucket_decision_authority: Literal["manager"] = "manager"
 
 
 class FundamentalValidationRequest(BaseModel):
