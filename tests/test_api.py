@@ -1,7 +1,11 @@
-import sys
 import os
+import sys
 from unittest.mock import patch
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+sys.path.insert(
+    0,
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
+)
 
 from fastapi.testclient import TestClient  # noqa: E402
 from app.main import app  # noqa: E402
@@ -9,23 +13,23 @@ from app.main import app  # noqa: E402
 client = TestClient(app)
 
 
-@patch('app.main.run_analysis')
+@patch("app.main.run_analysis")
 def test_analyze_endpoint_success_growth(mock_run_analysis):
-    """Test a successful analysis for the 'growth' style."""
+    """Test a successful analysis for the growth style."""
     mock_run_analysis.return_value = {
         "strength": "buy",
         "score": 0.75,
-        "reasoning": "Strong growth prospects."
+        "reasoning": "Strong growth prospects.",
     }
     response = client.post(
         "/analyze",
         json={"ticker": "AAPL", "style": "growth"},
-        headers={"X-Correlation-ID": "test-growth-123"}
+        headers={"X-Correlation-ID": "test-growth-123"},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["agent_type"] == "fundamental"
-    assert data["version"] == "1.0.0"
+    assert data["version"] == "1.1.0"
     assert data["status"] == "success"
     assert data["error"] is None
 
@@ -34,32 +38,42 @@ def test_analyze_endpoint_success_growth(mock_run_analysis):
     assert analysis_data["confidence_score"] == 0.75
     assert analysis_data["reason"] == "Strong growth prospects."
     assert analysis_data["source"] == "fundamental_agent"
+    assert analysis_data["evidence_version"] == "fundamental-evidence-v1"
+    assert analysis_data["manager_decision_required"] is True
 
-    mock_run_analysis.assert_called_with("AAPL", "growth", correlation_id="test-growth-123")
+    mock_run_analysis.assert_called_with(
+        "AAPL",
+        "growth",
+        correlation_id="test-growth-123",
+    )
 
 
-@patch('app.main.run_analysis')
+@patch("app.main.run_analysis")
 def test_analyze_endpoint_success_value(mock_run_analysis):
-    """Test a successful analysis for the 'value' style."""
+    """Test a successful analysis for the value style."""
     mock_run_analysis.return_value = {
         "strength": "neutral",
         "score": 0.5,
-        "reasoning": "Fairly valued."
+        "reasoning": "Fairly valued.",
     }
-    response = client.post("/analyze", json={"ticker": "MSFT", "style": "value"})
+    response = client.post(
+        "/analyze",
+        json={"ticker": "MSFT", "style": "value"},
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["agent_type"] == "fundamental"
-    assert data["version"] == "1.0.0"
+    assert data["version"] == "1.1.0"
     assert data["status"] == "success"
 
     analysis_data = data["data"]
     assert analysis_data["action"] == "hold"
     assert analysis_data["confidence_score"] == 0.5
     assert analysis_data["source"] == "fundamental_agent"
+    assert analysis_data["bucket_decision_authority"] == "manager"
 
 
-@patch('app.main.run_analysis')
+@patch("app.main.run_analysis")
 def test_analyze_endpoint_ticker_not_found(mock_run_analysis):
     """Test the response for a ticker that is not found."""
     mock_run_analysis.return_value = {"error": "ticker_not_found"}
@@ -79,7 +93,7 @@ def test_analyze_endpoint_ticker_not_found(mock_run_analysis):
     assert not error["retryable"]
 
 
-@patch('app.main.run_analysis')
+@patch("app.main.run_analysis")
 def test_analyze_endpoint_insufficient_data(mock_run_analysis):
     """Test the response when there is not enough data for analysis."""
     mock_run_analysis.return_value = {"error": "data_not_enough"}
@@ -98,7 +112,7 @@ def test_analyze_endpoint_insufficient_data(mock_run_analysis):
     assert error["message"] == "data_not_enough"
 
 
-@patch('app.main.run_analysis')
+@patch("app.main.run_analysis")
 def test_analyze_endpoint_model_error(mock_run_analysis):
     """Test the response when the analysis model fails."""
     mock_run_analysis.return_value = {"error": "some_model_error"}
@@ -125,6 +139,7 @@ def test_health_endpoint():
     assert data["status"] == "success"
     assert data["agent_type"] == "fundamental"
     assert data["data"]["status"] == "healthy"
+    assert data["data"]["evidence_version"] == "fundamental-evidence-v1"
 
 
 def test_root_endpoint():

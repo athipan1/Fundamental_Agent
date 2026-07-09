@@ -1,12 +1,14 @@
-from enum import Enum
-from typing import Optional, Any, Dict, TypeVar, Generic, Literal, List
-from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Dict, Generic, List, Literal, Optional, TypeVar
+
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 FUNDAMENTAL_AGENT_TYPE = "fundamental"
-FUNDAMENTAL_AGENT_VERSION = "1.0.0"
-FUNDAMENTAL_SERVICE_VERSION = "2.1.0"
+FUNDAMENTAL_AGENT_VERSION = "1.1.0"
+FUNDAMENTAL_SERVICE_VERSION = "2.2.0"
 SCHEMA_VERSION = "1.0"
+FUNDAMENTAL_EVIDENCE_VERSION = "fundamental-evidence-v1"
 
 
 class Action(str, Enum):
@@ -21,32 +23,124 @@ class StandardAgentData(BaseModel):
     reason: str
 
 
+class FundamentalEvidenceContract(BaseModel):
+    evidence_version: str = FUNDAMENTAL_EVIDENCE_VERSION
+    evidence_status: Literal["complete", "partial", "insufficient"]
+    evidence_completeness_score: float = Field(ge=0.0, le=1.0)
+    raw_scores: Dict[str, Any] = Field(default_factory=dict)
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    available_fields: List[str] = Field(default_factory=list)
+    missing_fields: List[str] = Field(default_factory=list)
+    missing_critical_metrics: List[str] = Field(default_factory=list)
+    evidence_reasons: List[str] = Field(default_factory=list)
+    risk_flags: List[str] = Field(default_factory=list)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+    strategy_bucket_hint: Literal[None] = None
+    bucket_decision_authority: Literal["manager"] = "manager"
+    manager_decision_required: bool = True
+
+
 class FundamentalAnalysisData(StandardAgentData):
     source: str = "fundamental_agent"
     quality_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     growth_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     valuation_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    financial_health_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    financial_health_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+    )
     cash_flow_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    fundamental_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+    )
     sector: Optional[str] = None
     sector_weights: Dict[str, float] = Field(default_factory=dict)
     risk_flags: List[str] = Field(default_factory=list)
     comparative_analysis: Dict[str, Any] = Field(default_factory=dict)
     key_metrics: Dict[str, Any] = Field(default_factory=dict)
+    raw_scores: Dict[str, Any] = Field(default_factory=dict)
+    fundamental_evidence: Optional[FundamentalEvidenceContract] = None
+    evidence_version: str = FUNDAMENTAL_EVIDENCE_VERSION
+    evidence_status: Literal[
+        "complete",
+        "partial",
+        "insufficient",
+        "unavailable",
+    ] = "unavailable"
+    evidence_completeness_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+    )
+    manager_decision_required: bool = True
+    bucket_decision_authority: Literal["manager"] = "manager"
     confidence_cap: float = 0.80
     raw_confidence_score: Optional[float] = None
     data_quality_score: Optional[float] = None
-    validation_status: str = "fundamental_validation_required_before_live"
+    validation_status: str = (
+        "fundamental_validation_required_before_live"
+    )
+
+    @model_validator(mode="after")
+    def populate_fundamental_evidence(self):
+        from .fundamental_evidence import build_fundamental_evidence
+
+        score = self.raw_confidence_score
+        if score is None:
+            score = self.fundamental_score
+        if score is None:
+            score = self.confidence_score
+
+        analysis_result = {
+            "score": score,
+            "score_details": {
+                "quality_score": self.quality_score,
+                "growth_score": self.growth_score,
+                "valuation_score": self.valuation_score,
+                "financial_health_score": self.financial_health_score,
+                "cash_flow_score": self.cash_flow_score,
+            },
+            "key_metrics": self.key_metrics,
+            "sector": self.sector,
+            "risk_flags": self.risk_flags,
+            "analysis_source": self.source,
+        }
+        evidence = build_fundamental_evidence(
+            analysis_result,
+            data_quality_score=float(self.data_quality_score or 0.0),
+            style="response",
+        )
+        self.fundamental_evidence = (
+            FundamentalEvidenceContract.model_validate(evidence)
+        )
+        self.raw_scores = dict(evidence["raw_scores"])
+        self.fundamental_score = evidence["raw_scores"].get(
+            "fundamental_score",
+            self.fundamental_score,
+        )
+        self.evidence_version = evidence["evidence_version"]
+        self.evidence_status = evidence["evidence_status"]
+        self.evidence_completeness_score = evidence[
+            "evidence_completeness_score"
+        ]
+        return self
 
 
 class HealthData(BaseModel):
     status: str = "healthy"
     confidence_cap: float = 0.80
     validation_endpoint: str = "/validate/fundamental"
+    evidence_version: str = FUNDAMENTAL_EVIDENCE_VERSION
+    bucket_decision_authority: Literal["manager"] = "manager"
 
 
 class FundamentalValidationRequest(BaseModel):
-    tickers: List[str] = Field(default_factory=lambda: ["AAPL", "MSFT", "NVDA"])
+    tickers: List[str] = Field(
+        default_factory=lambda: ["AAPL", "MSFT", "NVDA"]
+    )
     style: Literal["growth", "value", "dividend"] = "growth"
     min_data_quality_score: float = Field(0.70, ge=0.0, le=1.0)
     min_average_confidence: float = Field(0.35, ge=0.0, le=1.0)
@@ -85,7 +179,9 @@ class StandardAgentResponse(BaseModel, Generic[T]):
     version: str = FUNDAMENTAL_AGENT_VERSION
     schema_version: str = SCHEMA_VERSION
     status: Literal["success", "error"]
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     correlation_id: Optional[str] = None
     data: Optional[T] = None
     error: Optional[Dict[str, Any]] = None
@@ -97,5 +193,7 @@ class StandardAgentResponse(BaseModel, Generic[T]):
     def schema_version_must_be_semantic(cls, value: str) -> str:
         parts = value.split(".")
         if not all(part.isdigit() for part in parts):
-            raise ValueError('Schema version must be in semantic format (e.g., "1.0")')
+            raise ValueError(
+                'Schema version must be in semantic format (e.g., "1.0")'
+            )
         return value
