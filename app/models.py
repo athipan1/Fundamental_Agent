@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional, Any, Dict, TypeVar, Generic, Literal, List
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime, timezone
 
 FUNDAMENTAL_AGENT_TYPE = "fundamental"
@@ -63,6 +63,44 @@ class FundamentalAnalysisData(StandardAgentData):
     raw_confidence_score: Optional[float] = None
     data_quality_score: Optional[float] = None
     validation_status: str = "fundamental_validation_required_before_live"
+
+    @model_validator(mode="after")
+    def populate_fundamental_evidence(self):
+        from .fundamental_evidence import build_fundamental_evidence
+
+        analysis_result = {
+            "score": self.raw_confidence_score
+            if self.raw_confidence_score is not None
+            else self.fundamental_score
+            if self.fundamental_score is not None
+            else self.confidence_score,
+            "score_details": {
+                "quality_score": self.quality_score,
+                "growth_score": self.growth_score,
+                "valuation_score": self.valuation_score,
+                "financial_health_score": self.financial_health_score,
+                "cash_flow_score": self.cash_flow_score,
+            },
+            "key_metrics": self.key_metrics,
+            "sector": self.sector,
+            "risk_flags": self.risk_flags,
+            "analysis_source": self.source,
+        }
+        evidence = build_fundamental_evidence(
+            analysis_result,
+            data_quality_score=float(self.data_quality_score or 0.0),
+            style="response",
+        )
+        self.fundamental_evidence = FundamentalEvidenceContract.model_validate(evidence)
+        self.raw_scores = dict(evidence["raw_scores"])
+        self.fundamental_score = evidence["raw_scores"].get(
+            "fundamental_score",
+            self.fundamental_score,
+        )
+        self.evidence_version = evidence["evidence_version"]
+        self.evidence_status = evidence["evidence_status"]
+        self.evidence_completeness_score = evidence["evidence_completeness_score"]
+        return self
 
 
 class HealthData(BaseModel):
