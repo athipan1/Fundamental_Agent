@@ -75,16 +75,18 @@ def attach_financial_evidence(
         if source_value is not None and key_metrics.get(output_key) is None:
             key_metrics[output_key] = source_value
 
-    analysis_source = (
-        result.get("analysis_source")
-        or result.get("source")
+    reported_source = (
+        result.get("source")
+        or result.get("analysis_source")
         or "fundamental_agent"
     )
-    result["source"] = analysis_source
+    analysis_source = result.get("analysis_source") or reported_source
+    result["source"] = reported_source
     result["key_metrics"] = key_metrics
     result["financial_data_provenance"] = {
         "provider": "yfinance_yahoo_quote",
         "analysis_source": analysis_source,
+        "reported_source": reported_source,
         "sector": financial_data.get("Sector"),
         "industry": financial_data.get("Industry"),
         "exchange": financial_data.get("Exchange"),
