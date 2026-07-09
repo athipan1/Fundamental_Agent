@@ -121,11 +121,17 @@ def run_analysis(ticker: str, style: str = "growth", correlation_id: Optional[st
             print(f"{log_prefix}LLM analysis completed successfully.")
             analysis_result = _merge_llm_reasoning(v2_result, llm_result)
         except ModelError as e:
-            print(f"{log_prefix}LLM analysis failed: {e}. Using deterministic result.")
-            analysis_result = v2_result
+            print(f"{log_prefix}LLM analysis failed: {e}. Using rule-based fallback.")
+            analysis_result = attach_financial_evidence(
+                run_rule_based_analysis(ticker, financial_data, style),
+                financial_data,
+            )
         except Exception as e:
-            print(f"{log_prefix}LLM analysis unexpected failure: {e}. Using deterministic result.")
-            analysis_result = v2_result
+            print(f"{log_prefix}LLM analysis unexpected failure: {e}. Using rule-based fallback.")
+            analysis_result = attach_financial_evidence(
+                run_rule_based_analysis(ticker, financial_data, style),
+                financial_data,
+            )
 
         analysis_result = attach_financial_evidence(analysis_result, financial_data)
         cache_handler.save_to_cache(cache_key, analysis_result)
