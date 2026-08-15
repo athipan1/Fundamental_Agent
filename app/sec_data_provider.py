@@ -151,6 +151,12 @@ def _unit_rows(
     concepts: Iterable[str],
     unit_preferences: Iterable[str],
 ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
+    """Return facts only when their XBRL unit matches the expected metric unit.
+
+    Falling back to an arbitrary available unit can silently compare values in
+    different currencies or dimensions. A missing preferred unit is therefore
+    treated as missing evidence instead of being guessed.
+    """
     taxonomy = _taxonomy(company_facts)
     for concept in concepts:
         definition = taxonomy.get(concept)
@@ -162,10 +168,9 @@ def _unit_rows(
         for unit in unit_preferences:
             rows = units.get(unit)
             if isinstance(rows, list) and rows:
-                return concept, [dict(row) for row in rows if isinstance(row, Mapping)]
-        for rows in units.values():
-            if isinstance(rows, list) and rows:
-                return concept, [dict(row) for row in rows if isinstance(row, Mapping)]
+                return concept, [
+                    dict(row) for row in rows if isinstance(row, Mapping)
+                ]
     return None, []
 
 
@@ -185,7 +190,10 @@ def _latest_by_end(rows: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
     return [selected[key] for key in sorted(selected)]
 
 
-def _annual_rows(rows: Iterable[Mapping[str, Any]], limit: int = 4) -> List[Dict[str, Any]]:
+def _annual_rows(
+    rows: Iterable[Mapping[str, Any]],
+    limit: int = 4,
+) -> List[Dict[str, Any]]:
     annual = [
         row
         for row in rows
