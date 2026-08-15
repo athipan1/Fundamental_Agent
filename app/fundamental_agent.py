@@ -11,7 +11,7 @@ from .exceptions import TickerNotFound, InsufficientData, ModelError
 from . import cache_handler
 
 
-EVIDENCE_CACHE_VERSION = "fundamental-evidence-v1"
+EVIDENCE_CACHE_VERSION = "fundamental-multisource-v1"
 
 
 def _merge_llm_reasoning(v2_result: dict, llm_result: Optional[dict]) -> dict:
