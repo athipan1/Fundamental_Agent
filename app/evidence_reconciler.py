@@ -134,7 +134,6 @@ def reconcile_financial_sources(
     sec_fields_used: list[str] = []
 
     if sec_status == "success":
-        providers.append("sec_edgar_companyfacts")
         for field in _HISTORY_FIELDS:
             filing_history = sec.get(field)
             if not _normalized_history(filing_history):
@@ -147,13 +146,17 @@ def reconcile_financial_sources(
             result[field] = _merge_history(result.get(field), filing_history)
             sec_fields_used.append(field)
 
-        reconciliation_status = (
-            "multi_source_divergent"
-            if divergence_fields
-            else "multi_source_verified"
-        )
-        if divergence_fields:
-            _append_warning(result, "cross_source_divergence")
+        if sec_fields_used:
+            providers.append("sec_edgar_companyfacts")
+            reconciliation_status = (
+                "multi_source_divergent"
+                if divergence_fields
+                else "multi_source_verified"
+            )
+            if divergence_fields:
+                _append_warning(result, "cross_source_divergence")
+        else:
+            reconciliation_status = "single_source_yahoo"
     else:
         reconciliation_status = "single_source_yahoo"
         if sec_status == "error":
