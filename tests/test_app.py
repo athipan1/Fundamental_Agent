@@ -25,7 +25,7 @@ class TestFundamentalAgent(unittest.TestCase):
 
         self.assertTrue(result["cached"])
         mock_cache_handler.load_from_cache.assert_called_once_with(
-            "analysis_fundamental-evidence-v1_AAPL_growth"
+            "analysis_fundamental-multisource-v1_AAPL_growth"
         )
 
     @patch("app.fundamental_agent.run_rule_based_analysis")
@@ -93,7 +93,7 @@ class TestFundamentalAgent(unittest.TestCase):
         cache_key, cache_data = mock_cache_handler.save_to_cache.call_args[0]
         self.assertEqual(
             cache_key,
-            "analysis_fundamental-evidence-v1_GOOG_dividend",
+            "analysis_fundamental-multisource-v1_GOOG_dividend",
         )
         self.assertEqual(cache_data["source"], "llm")
 

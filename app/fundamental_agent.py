@@ -1,15 +1,17 @@
 import argparse
 import json
 from typing import Any, Dict, Optional
-from .data_fetcher import get_financial_data
+
+from .multi_source_data import get_financial_data
 from .analyzer import analyze_financials
 from .rule_based_analyzer import run_rule_based_analysis
 from .fundamental_engine_v2 import run_fundamental_v2
+from .evidence_safety import apply_reconciliation_safety
 from .exceptions import TickerNotFound, InsufficientData, ModelError
 from . import cache_handler
 
 
-EVIDENCE_CACHE_VERSION = "fundamental-evidence-v1"
+EVIDENCE_CACHE_VERSION = "fundamental-multisource-v1"
 
 
 def _merge_llm_reasoning(v2_result: dict, llm_result: Optional[dict]) -> dict:
@@ -29,6 +31,39 @@ def _merge_llm_reasoning(v2_result: dict, llm_result: Optional[dict]) -> dict:
     else:
         v2_result.update(llm_result)
     return v2_result
+
+
+def _financial_data_provenance(
+    financial_data: Dict[str, Any],
+    *,
+    analysis_source: str,
+    reported_source: str,
+    preserved_metric_fields: list[str],
+) -> Dict[str, Any]:
+    reconciliation = dict(financial_data.get("Source Reconciliation") or {})
+    sec_evidence = dict(financial_data.get("SEC Evidence") or {})
+    providers = list(reconciliation.get("providers") or [])
+    if not providers:
+        providers = ["yfinance_yahoo_quote"]
+    return {
+        "provider": "multi_source" if len(providers) > 1 else providers[0],
+        "providers": providers,
+        "analysis_source": analysis_source,
+        "reported_source": reported_source,
+        "sector": financial_data.get("Sector"),
+        "industry": financial_data.get("Industry"),
+        "exchange": financial_data.get("Exchange"),
+        "currency": financial_data.get("Currency"),
+        "data_quality_warning": financial_data.get("Data Quality Warning"),
+        "reconciliation_status": reconciliation.get("status"),
+        "divergence_fields": reconciliation.get("divergence_fields") or [],
+        "sec_status": reconciliation.get("sec_status") or sec_evidence.get("status"),
+        "sec_cik": reconciliation.get("sec_cik") or sec_evidence.get("cik"),
+        "sec_fields_used": reconciliation.get("sec_fields_used") or [],
+        "reconciliation_policy": reconciliation.get("policy"),
+        "preserved_metric_fields": preserved_metric_fields,
+        "bucket_decision_authority": "manager",
+    }
 
 
 def attach_financial_evidence(
@@ -83,20 +118,19 @@ def attach_financial_evidence(
     analysis_source = result.get("analysis_source") or reported_source
     result["source"] = reported_source
     result["key_metrics"] = key_metrics
-    result["financial_data_provenance"] = {
-        "provider": "yfinance_yahoo_quote",
-        "analysis_source": analysis_source,
-        "reported_source": reported_source,
-        "sector": financial_data.get("Sector"),
-        "industry": financial_data.get("Industry"),
-        "exchange": financial_data.get("Exchange"),
-        "currency": financial_data.get("Currency"),
-        "data_quality_warning": financial_data.get("Data Quality Warning"),
-        "preserved_metric_fields": sorted(
-            key for key, value in key_metrics.items() if value is not None
-        ),
-        "bucket_decision_authority": "manager",
-    }
+    preserved_metric_fields = sorted(
+        key for key, value in key_metrics.items() if value is not None
+    )
+    provenance = _financial_data_provenance(
+        financial_data,
+        analysis_source=analysis_source,
+        reported_source=reported_source,
+        preserved_metric_fields=preserved_metric_fields,
+    )
+    result["financial_data_provenance"] = provenance
+    comparative_analysis = dict(result.get("comparative_analysis") or {})
+    comparative_analysis["data_provenance"] = provenance
+    result["comparative_analysis"] = comparative_analysis
     result["strategy_bucket_hint"] = None
     result["bucket_decision_authority"] = "manager"
     result["manager_decision_required"] = True
@@ -168,6 +202,10 @@ def run_analysis(
             analysis_result,
             financial_data,
         )
+        analysis_result = apply_reconciliation_safety(
+            analysis_result,
+            financial_data,
+        )
         cache_handler.save_to_cache(cache_key, analysis_result)
         return analysis_result
 
@@ -194,7 +232,7 @@ def run_analysis(
                 "legacy_rule_based_emergency_fallback"
             )
             fallback["source"] = fallback["analysis_source"]
-            return fallback
+            return apply_reconciliation_safety(fallback, financial_data)
         except Exception:
             return {"error": "analysis_failed"}
 
