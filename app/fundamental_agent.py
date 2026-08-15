@@ -6,6 +6,7 @@ from .multi_source_data import get_financial_data
 from .analyzer import analyze_financials
 from .rule_based_analyzer import run_rule_based_analysis
 from .fundamental_engine_v2 import run_fundamental_v2
+from .evidence_safety import apply_reconciliation_safety
 from .exceptions import TickerNotFound, InsufficientData, ModelError
 from . import cache_handler
 
@@ -201,6 +202,10 @@ def run_analysis(
             analysis_result,
             financial_data,
         )
+        analysis_result = apply_reconciliation_safety(
+            analysis_result,
+            financial_data,
+        )
         cache_handler.save_to_cache(cache_key, analysis_result)
         return analysis_result
 
@@ -227,7 +232,7 @@ def run_analysis(
                 "legacy_rule_based_emergency_fallback"
             )
             fallback["source"] = fallback["analysis_source"]
-            return fallback
+            return apply_reconciliation_safety(fallback, financial_data)
         except Exception:
             return {"error": "analysis_failed"}
 
