@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from app.evidence_reconciler import reconcile_financial_sources
-from app.sec_data_provider import fetch_sec_financial_data
+from app.sec_data_provider import _unit_rows, fetch_sec_financial_data
 
 
 def _company_facts():
@@ -99,6 +99,32 @@ def test_sec_provider_builds_filing_history(mock_fetch, mock_cik, mock_enabled):
     assert result["Historical Free Cash Flow"]["2024-12-31"] == 25.0
     assert result["SEC Evidence"]["status"] == "success"
     assert result["SEC Evidence"]["cik"] == "0000123456"
+
+
+def test_sec_provider_rejects_unexpected_xbrl_units():
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "Revenues": {
+                    "units": {
+                        "EUR": [
+                            {
+                                "end": "2024-12-31",
+                                "val": 100.0,
+                                "form": "10-K",
+                                "fp": "FY",
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+    concept, rows = _unit_rows(facts, ("Revenues",), ("USD",))
+
+    assert concept is None
+    assert rows == []
 
 
 def test_reconciler_prefers_sec_for_matching_filing_periods():
