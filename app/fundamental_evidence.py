@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Mapping, Optional
 
+from .candidate_scorecard import build_fundamental_candidate_scorecard
+
 
 FUNDAMENTAL_EVIDENCE_VERSION = "fundamental-evidence-v1"
 BUCKET_DECISION_AUTHORITY = "manager"
@@ -140,9 +142,6 @@ def _evidence_status(
     completeness: float,
     missing_critical: list[str],
 ) -> str:
-    # Critical evidence gaps are a data-availability problem, not a weaker
-    # fundamental opinion. Fail closed so Manager routes the candidate to
-    # REVIEW instead of treating the payload as usable partial evidence.
     if missing_critical:
         return "insufficient"
     if completeness >= 0.80:
@@ -210,6 +209,22 @@ def build_fundamental_evidence(
     )
     status = _evidence_status(completeness, missing_critical)
 
+    scorecard_metrics = dict(metrics)
+    scorecard_metrics["financial_health_score"] = raw_scores.get(
+        "financial_health_score"
+    )
+    candidate_scorecard = build_fundamental_candidate_scorecard(
+        scorecard_metrics,
+        sector=str(sector) if sector else None,
+        evidence_status=status,
+    )
+    raw_scores["candidate_fundamental_points"] = candidate_scorecard[
+        "points"
+    ]
+    raw_scores["candidate_fundamental_max_points"] = candidate_scorecard[
+        "max_points"
+    ]
+
     reasons: list[str] = [
         f"evidence_status:{status}",
         f"available_fields:{len(available_fields)}",
@@ -238,6 +253,7 @@ def build_fundamental_evidence(
         "synthetic_or_prefetched": (
             "prefetch" in source or "synthetic" in source
         ),
+        "candidate_scorecard": candidate_scorecard,
     }
 
     return {
