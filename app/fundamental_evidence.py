@@ -140,7 +140,12 @@ def _evidence_status(
     completeness: float,
     missing_critical: list[str],
 ) -> str:
-    if completeness >= 0.80 and not missing_critical:
+    # Critical evidence gaps are a data-availability problem, not a weaker
+    # fundamental opinion. Fail closed so Manager routes the candidate to
+    # REVIEW instead of treating the payload as usable partial evidence.
+    if missing_critical:
+        return "insufficient"
+    if completeness >= 0.80:
         return "complete"
     if completeness >= 0.45:
         return "partial"
