@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+import math
+from datetime import date
 
 
 SECTOR_PEERS: Dict[str, List[str]] = {
@@ -33,9 +35,14 @@ def safe_float(value: Any) -> Optional[float]:
     try:
         if value is None:
             return None
-        return float(value)
+        result = float(value)
+        return result if math.isfinite(result) and not isinstance(value, bool) else None
     except (TypeError, ValueError):
         return None
+
+
+def first_observed(*values):
+    return next((value for value in values if value is not None), None)
 
 
 def safe_ratio(numerator: Any, denominator: Any) -> Optional[float]:
@@ -76,7 +83,7 @@ def score_lower_better(value: Any, strong: float, weak: float) -> float:
 
 
 def weighted_average(parts: List[tuple[float, float]]) -> float:
-    active = [(score, weight) for score, weight in parts if score > 0]
+    active = [(score, weight) for score, weight in parts if weight > 0]
     if not active:
         return 0.0
     total_weight = sum(weight for _, weight in active)
@@ -112,6 +119,14 @@ def calculate_cagr_from_history(history: Any) -> Optional[float]:
     start = values[0]
     end = values[-1]
     periods = max(1, len(values) - 1)
+    try:
+        observed = sorted((date.fromisoformat(str(key)[:10]), safe_float(value))
+                          for key, value in history.items() if safe_float(value) is not None)
+        periods = (observed[-1][0] - observed[0][0]).days / 365.25
+    except (ValueError, TypeError):
+        return None
+    if periods <= 0:
+        return None
     if start is None or end is None or start <= 0 or end <= 0:
         return None
     try:
@@ -260,19 +275,20 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     quarterly_revenue_growth = safe_float(data.get("Quarterly Revenue Growth"))
     quarterly_eps_growth = safe_float(data.get("Quarterly EPS Growth"))
     quarterly_fcf_growth = safe_float(data.get("Quarterly FCF Growth"))
-    revenue_3y_cagr = calculate_cagr_from_history(data.get("Historical Revenue")) or revenue_growth
-    eps_3y_cagr = calculate_cagr_from_history(data.get("Historical EPS") or data.get("Historical Diluted EPS")) or eps_growth
-    fcf_3y_cagr = calculate_cagr_from_history(data.get("Historical FCF") or data.get("Historical Free Cash Flow")) or fcf_growth
+    revenue_3y_cagr = first_observed(calculate_cagr_from_history(data.get("Historical Revenue")), revenue_growth)
+    eps_3y_cagr = first_observed(calculate_cagr_from_history(data.get("Historical EPS") or data.get("Historical Diluted EPS")), eps_growth)
+    fcf_3y_cagr = first_observed(calculate_cagr_from_history(data.get("Historical FCF") or data.get("Historical Free Cash Flow")), fcf_growth)
     ocf_3y_cagr = calculate_cagr_from_history(data.get("Historical Operating Cash Flow"))
-    qoq_revenue_growth = calculate_qoq_growth(data.get("Quarterly Revenue")) or quarterly_revenue_growth
-    qoq_eps_growth = calculate_qoq_growth(data.get("Quarterly EPS") or data.get("Quarterly Diluted EPS")) or quarterly_eps_growth
-    qoq_fcf_growth = calculate_qoq_growth(data.get("Quarterly FCF") or data.get("Quarterly Free Cash Flow")) or quarterly_fcf_growth
+    qoq_revenue_growth = first_observed(calculate_qoq_growth(data.get("Quarterly Revenue")), quarterly_revenue_growth)
+    qoq_eps_growth = first_observed(calculate_qoq_growth(data.get("Quarterly EPS") or data.get("Quarterly Diluted EPS")), quarterly_eps_growth)
+    qoq_fcf_growth = first_observed(calculate_qoq_growth(data.get("Quarterly FCF") or data.get("Quarterly Free Cash Flow")), quarterly_fcf_growth)
     qoq_ocf_growth = calculate_qoq_growth(data.get("Quarterly Operating Cash Flow"))
     pe = safe_float(data.get("P/E Ratio"))
     forward_pe = safe_float(data.get("Forward P/E"))
     peg = safe_float(data.get("PEG Ratio"))
     pb = safe_float(data.get("P/B Ratio"))
-    debt_to_equity = normalize_debt_to_equity(data.get("Debt to Equity Ratio"))
+    debt_to_equity = (safe_float(data.get("Debt to Equity Ratio")) if data.get("Debt to Equity Unit") == "ratio"
+                      else normalize_debt_to_equity(data.get("Debt to Equity Ratio")))
     cash_flow = safe_float(data.get("Operating Cash Flow"))
     free_cash_flow = safe_float(data.get("Free Cash Flow"))
     net_income = safe_float(data.get("Net Income"))
@@ -452,8 +468,7 @@ def calculate_score_breakdown(ticker: str, data: Dict[str, Any], style: str = "g
     }
 
 
-def action_from_score(score: float, risk_flags: List[str]) -> str:
-    severe_flags = {
+SEVERE_FLAGS = {
         "negative_operating_cash_flow",
         "negative_free_cash_flow",
         "negative_eps",
@@ -464,7 +479,10 @@ def action_from_score(score: float, risk_flags: List[str]) -> str:
         "weak_cash_conversion",
         "weak_fcf_margin",
     }
-    severe_count = len(severe_flags.intersection(set(risk_flags or [])))
+
+
+def action_from_score(score: float, risk_flags: List[str]) -> str:
+    severe_count = len(SEVERE_FLAGS.intersection(set(risk_flags or [])))
     if score >= 0.72 and severe_count == 0:
         return "buy"
     if score >= 0.55 and severe_count <= 1:
@@ -499,6 +517,27 @@ def run_fundamental_v2(ticker: str, data: Dict[str, Any], style: str = "growth")
     reason = build_reason(ticker, breakdown)
     return {
         "strength": action,
+        "decision_trace": {
+            "schema_version": "fundamental-decision-trace.v1", "engine": "fundamental_engine_v2",
+            "raw_score": breakdown["confidence_score"], "strength": action,
+            "buy_conditions": [
+                {"field": "fundamental_score", "observed": breakdown["confidence_score"],
+                 "operator": ">=", "threshold": 0.72, "passed": breakdown["confidence_score"] >= 0.72,
+                 "reason_code": "FUNDAMENTAL_SCORE_BELOW_BUY_THRESHOLD"},
+                {"field": "severe_risk_flags", "observed": sorted(SEVERE_FLAGS.intersection(breakdown["risk_flags"])),
+                 "operator": "count==", "threshold": 0,
+                 "passed": not bool(SEVERE_FLAGS.intersection(breakdown["risk_flags"])),
+                 "reason_code": "FUNDAMENTAL_SEVERE_RISK_FLAGS"},
+            ],
+            "score_components": {
+                name: {"score": breakdown[name + "_score"], "weight": weight,
+                       "contribution": breakdown[name + "_score"] * weight}
+                for name, weight in breakdown["sector_weights"].items()
+            },
+            "zero_score_weight_policy": "included_in_denominator",
+            "key_metrics": breakdown["key_metrics"],
+            "missing_metrics": [key for key, value in breakdown["key_metrics"].items() if value is None],
+        },
         "score": breakdown["confidence_score"],
         "reasoning": reason,
         "analysis_source": "fundamental_engine_v2",
