@@ -2,7 +2,8 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Literal, Dict, Optional, Any, List
 from .fundamental_agent import run_analysis
-from .fundamental_engine_v2 import run_fundamental_v2
+from .fundamental_engine_v2 import run_fundamental_v2, action_from_score, SEVERE_FLAGS
+from .scanner_financial_inputs import prefetched_financial_data, number
 from .models import (
     StandardAgentResponse,
     Action,
@@ -123,84 +124,8 @@ def _data_quality_score(request: TickerRequest, analysis_result: Dict[str, Any])
     return max(0.0, min(1.0, score))
 
 
-def _as_decimal(value: Any) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        value = float(value)
-        return value / 100.0 if abs(value) > 1 else value
-    except (TypeError, ValueError):
-        return None
-
-
-def _synthetic_history_from_growth(growth: Any, periods: int = 3) -> Dict[str, float]:
-    growth = _as_decimal(growth)
-    if growth is None or growth <= -0.95:
-        return {}
-    end_value = 1.0 + growth
-    return {
-        "2021-12-31": 1.0,
-        "2022-12-31": max(0.01, 1.0 + (growth * 1 / max(1, periods))),
-        "2023-12-31": max(0.01, 1.0 + (growth * 2 / max(1, periods))),
-        "2024-12-31": max(0.01, end_value),
-    }
-
-
-def _synthetic_quarterly_from_growth(growth: Any) -> Dict[str, float]:
-    growth = _as_decimal(growth)
-    if growth is None or growth <= -0.95:
-        return {}
-    return {
-        "2024-06-30": 1.0,
-        "2024-09-30": max(0.01, 1.0 + growth),
-    }
-
-
 def _prefetched_to_financial_data(prefetched_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    if not prefetched_data:
-        return {}
-    metadata = prefetched_data.get("metadata") or {}
-    raw_scores = prefetched_data.get("raw_scores") or metadata.get("raw_scores") or {}
-    growth_metrics = metadata.get("growth_metrics") or {}
-    revenue_growth = raw_scores.get("revenue_3y_cagr")
-    if revenue_growth is None:
-        revenue_growth = raw_scores.get("revenue_cagr")
-    revenue_growth = _as_decimal(revenue_growth)
-    eps_growth = _as_decimal(raw_scores.get("eps_growth"))
-    fcf_growth = _as_decimal(raw_scores.get("fcf_growth") or raw_scores.get("fcf_3y_cagr"))
-    qoq_revenue_growth = _as_decimal(raw_scores.get("qoq_revenue_growth"))
-    qoq_eps_growth = _as_decimal(raw_scores.get("qoq_eps_growth"))
-    qoq_fcf_growth = _as_decimal(raw_scores.get("qoq_fcf_growth"))
-    return {
-        "ROE": raw_scores.get("roe"),
-        "ROA": raw_scores.get("roa"),
-        "Debt to Equity Ratio": raw_scores.get("debt_to_equity"),
-        "Profit Margins": raw_scores.get("profit_margins"),
-        "P/E Ratio": raw_scores.get("pe_ratio"),
-        "PEG Ratio": raw_scores.get("peg_ratio"),
-        "P/B Ratio": raw_scores.get("pb_ratio"),
-        "Revenue Growth": revenue_growth,
-        "EPS Growth": eps_growth,
-        "FCF Growth": fcf_growth,
-        "Historical Revenue": _synthetic_history_from_growth(revenue_growth),
-        "Historical EPS": _synthetic_history_from_growth(eps_growth),
-        "Historical Free Cash Flow": _synthetic_history_from_growth(fcf_growth),
-        "Historical FCF": _synthetic_history_from_growth(fcf_growth),
-        "Quarterly Revenue Growth": qoq_revenue_growth,
-        "Quarterly EPS Growth": qoq_eps_growth,
-        "Quarterly FCF Growth": qoq_fcf_growth,
-        "Quarterly Revenue": _synthetic_quarterly_from_growth(qoq_revenue_growth),
-        "Quarterly EPS": _synthetic_quarterly_from_growth(qoq_eps_growth),
-        "Quarterly Free Cash Flow": _synthetic_quarterly_from_growth(qoq_fcf_growth),
-        "Operating Cash Flow": raw_scores.get("operating_cash_flow") or raw_scores.get("free_cash_flow"),
-        "Free Cash Flow": raw_scores.get("free_cash_flow"),
-        "Market Cap": raw_scores.get("market_cap"),
-        "Sector": metadata.get("sector") or prefetched_data.get("sector"),
-        "Exchange": prefetched_data.get("exchange") or metadata.get("exchange"),
-        "Short Name": prefetched_data.get("symbol") or prefetched_data.get("ticker"),
-        "Data Quality Warning": "scanner_prefetched_data",
-        "Scanner Growth Metrics": growth_metrics,
-    }
+    return prefetched_financial_data(prefetched_data)
 
 
 def _to_response_data(request: TickerRequest, analysis_result: Dict[str, Any]) -> FundamentalAnalysisData:
@@ -231,7 +156,17 @@ def _to_response_data(request: TickerRequest, analysis_result: Dict[str, Any]) -
         data_quality_score=data_quality_score,
         validation_status="fundamental_validation_required_before_live",
         reason=analysis_result.get("reasoning", "ไม่สามารถสร้างคำวิเคราะห์ได้"),
-        source=analysis_result.get("source", "fundamental_agent"),
+        source=analysis_result.get("source") or analysis_result.get("analysis_source") or "fundamental_agent",
+        decision_trace={
+            **(analysis_result.get("decision_trace") or {}),
+            "response_action": action.value, "raw_strength": analysis_result.get("strength"),
+            "normalization_status": "recognized" if analysis_result.get("strength") in action_map else "invalid_action",
+            "analysis_source": analysis_source, "raw_score": raw_score,
+            "capped_confidence": capped_score, "data_quality_score": data_quality_score,
+            "confidence_caps": {"base": CONFIDENCE_CAP, "prefetched": PREFETCHED_DATA_CAP, "low_quality": SYNTHETIC_DATA_CAP},
+            "input_trace": analysis_result.get("input_trace"),
+            "evidence_conflict_review_required": analysis_result.get("evidence_conflict_review_required", False),
+        },
         quality_score=score_details.get("quality_score"),
         growth_score=score_details.get("growth_score"),
         valuation_score=score_details.get("valuation_score"),
@@ -254,18 +189,41 @@ def _growth_score_of(result: Dict[str, Any]) -> float:
 
 def _run_analysis_result(request: TickerRequest, correlation_id: Optional[str] = None) -> Dict[str, Any]:
     analysis_result = run_analysis(request.ticker, request.style, correlation_id=correlation_id)
-    if request.prefetched_data and ("error" in analysis_result or _growth_score_of(analysis_result) <= 0.0):
-        prefetched_financials = _prefetched_to_financial_data(request.prefetched_data)
-        if prefetched_financials:
-            prefetch_result = run_fundamental_v2(
-                request.ticker.upper(),
-                prefetched_financials,
-                request.style,
-            )
-            prefetch_result["analysis_source"] = "fundamental_engine_v2_with_scanner_prefetch"
-            if "error" in analysis_result or _growth_score_of(prefetch_result) >= _growth_score_of(analysis_result):
-                analysis_result = prefetch_result
-    return analysis_result
+    metrics = analysis_result.get("key_metrics") or {}
+    growth_missing = all(number(metrics.get(key)) is None for key in (
+        "revenue_3y_cagr", "eps_3y_cagr", "fcf_3y_cagr", "revenue_growth", "eps_growth", "fcf_growth",
+    ))
+    # Negative or zero growth is real evidence. Do not replace it with a higher score.
+    conflict = analysis_result.get("evidence_conflict_review_required") or (
+        "cross_source_divergence" in (analysis_result.get("risk_flags") or [])
+    )
+    if not request.prefetched_data or conflict or ("error" not in analysis_result and not growth_missing):
+        return analysis_result
+    financials = _prefetched_to_financial_data(request.prefetched_data)
+    if not financials:
+        return analysis_result
+    result = run_fundamental_v2(request.ticker.upper(), financials, request.style)
+    result["risk_flags"] = sorted(set(result["risk_flags"]) | set(analysis_result.get("risk_flags") or []))
+    result["strength"] = action_from_score(result["score"], result["risk_flags"])
+    severe = sorted(SEVERE_FLAGS.intersection(result["risk_flags"]))
+    result["decision_trace"]["buy_conditions"][1].update(observed=severe, passed=not bool(severe))
+    result["source"] = result["analysis_source"] = "fundamental_engine_v2_with_scanner_prefetch"
+    result["input_trace"] = financials.get("Scanner Input Trace")
+    result["input_trace"]["fallback_reason"] = analysis_result.get("error") or "primary_growth_evidence_missing"
+    result["decision_trace"]["buy_conditions"].append({
+        "field": "canonical_prefetch_provenance", "operator": "==", "threshold": True,
+        "observed": result["input_trace"]["canonical_history_available"],
+        "passed": result["input_trace"]["canonical_history_available"],
+        "reason_code": "PREFETCH_HISTORY_UNVERIFIED",
+    })
+    # Legacy cached raw summaries have no observed fiscal history or verifiable timestamp.
+    if not result["input_trace"]["canonical_history_available"]:
+        result["risk_flags"].append("prefetch_history_unverified")
+        if result["strength"] == "buy":
+            result["strength"] = "neutral"
+            result["reasoning"] += " BUY withheld: prefetched history provenance is unverified."
+    result["decision_trace"]["strength"] = result["strength"]
+    return result
 
 
 @app.post("/analyze", response_model=StandardAgentResponse[FundamentalAnalysisData])

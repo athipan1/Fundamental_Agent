@@ -25,7 +25,7 @@ class TestFundamentalAgent(unittest.TestCase):
 
         self.assertTrue(result["cached"])
         mock_cache_handler.load_from_cache.assert_called_once_with(
-            "analysis_fundamental-multisource-v1_AAPL_growth"
+            "analysis_fundamental-decision-v2_AAPL_growth"
         )
 
     @patch("app.fundamental_agent.run_rule_based_analysis")
@@ -42,7 +42,7 @@ class TestFundamentalAgent(unittest.TestCase):
         mock_analyze,
         mock_rule_based,
     ):
-        """Test that the rule-based fallback is triggered on ModelError."""
+        """Test that optional LLM failure preserves the deterministic engine."""
         print("Testing fallback logic on ModelError...")
         mock_cache_handler.load_from_cache.return_value = None
         mock_get_data.return_value = {"some_data": 123}
@@ -50,13 +50,13 @@ class TestFundamentalAgent(unittest.TestCase):
 
         result = run_analysis("MSFT", "value")
 
-        self.assertEqual(result["source"], "rule_based")
+        self.assertEqual(result["source"], "fundamental_engine_v2")
         self.assertEqual(
             result["financial_data_provenance"]["reported_source"],
-            "rule_based",
+            "fundamental_engine_v2",
         )
         mock_analyze.assert_called_once()
-        mock_rule_based.assert_called_once()
+        mock_rule_based.assert_not_called()
         mock_cache_handler.save_to_cache.assert_called_once()
 
     @patch("app.fundamental_agent.run_rule_based_analysis")
@@ -78,14 +78,14 @@ class TestFundamentalAgent(unittest.TestCase):
 
         result = run_analysis("GOOG", "dividend")
 
-        self.assertEqual(result["source"], "llm")
+        self.assertEqual(result["source"], "fundamental_engine_v2")
         self.assertEqual(
             result["financial_data_provenance"]["analysis_source"],
             "fundamental_engine_v2",
         )
         self.assertEqual(
             result["financial_data_provenance"]["reported_source"],
-            "llm",
+            "fundamental_engine_v2",
         )
         mock_analyze.assert_called_once()
         mock_rule_based.assert_not_called()
@@ -93,9 +93,9 @@ class TestFundamentalAgent(unittest.TestCase):
         cache_key, cache_data = mock_cache_handler.save_to_cache.call_args[0]
         self.assertEqual(
             cache_key,
-            "analysis_fundamental-multisource-v1_GOOG_dividend",
+            "analysis_fundamental-decision-v2_GOOG_dividend",
         )
-        self.assertEqual(cache_data["source"], "llm")
+        self.assertEqual(cache_data["source"], "fundamental_engine_v2")
 
 
 if __name__ == "__main__":

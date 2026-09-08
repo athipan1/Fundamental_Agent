@@ -41,6 +41,7 @@ class FundamentalEvidenceContract(BaseModel):
 
 
 class FundamentalAnalysisData(StandardAgentData):
+    decision_trace: Dict[str, Any] = Field(default_factory=dict)
     source: str = "fundamental_agent"
     quality_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     growth_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)

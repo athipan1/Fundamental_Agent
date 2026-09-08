@@ -7,30 +7,21 @@ from .analyzer import analyze_financials
 from .rule_based_analyzer import run_rule_based_analysis
 from .fundamental_engine_v2 import run_fundamental_v2
 from .evidence_safety import apply_reconciliation_safety
-from .exceptions import TickerNotFound, InsufficientData, ModelError
+from .exceptions import TickerNotFound, InsufficientData
 from . import cache_handler
 
 
-EVIDENCE_CACHE_VERSION = "fundamental-multisource-v1"
+EVIDENCE_CACHE_VERSION = "fundamental-decision-v2"
 
 
 def _merge_llm_reasoning(v2_result: dict, llm_result: Optional[dict]) -> dict:
-    if not llm_result:
-        return v2_result
-    if "source" in llm_result and "score" not in v2_result:
-        return llm_result
-    llm_reason = llm_result.get("reasoning")
+    result = dict(v2_result)
+    llm_reason = (llm_result or {}).get("reasoning")
     if llm_reason:
-        v2_result["reasoning"] = (
-            f"{v2_result.get('reasoning', '')} "
-            f"บทวิเคราะห์เสริม: {llm_reason}"
-        )
-        v2_result["llm_reasoning"] = llm_reason
-    if llm_reason:
-        v2_result["analysis_source"] = "fundamental_engine_v2_with_llm"
-    else:
-        v2_result.update(llm_result)
-    return v2_result
+        result["reasoning"] = f"{result.get('reasoning', '')} บทวิเคราะห์เสริม: {llm_reason}"
+        result["llm_reasoning"] = llm_reason
+    # Optional language generation must never change deterministic direction or score.
+    return result
 
 
 def _financial_data_provenance(
@@ -179,24 +170,10 @@ def run_analysis(
             llm_result = analyze_financials(ticker, financial_data, style)
             print(f"{log_prefix}LLM analysis completed successfully.")
             analysis_result = _merge_llm_reasoning(v2_result, llm_result)
-        except ModelError as exc:
-            print(
-                f"{log_prefix}LLM analysis failed: {exc}. "
-                "Using rule-based fallback."
-            )
-            analysis_result = attach_financial_evidence(
-                run_rule_based_analysis(ticker, financial_data, style),
-                financial_data,
-            )
         except Exception as exc:
-            print(
-                f"{log_prefix}LLM analysis unexpected failure: {exc}. "
-                "Using rule-based fallback."
-            )
-            analysis_result = attach_financial_evidence(
-                run_rule_based_analysis(ticker, financial_data, style),
-                financial_data,
-            )
+            print(f"{log_prefix}Optional LLM reasoning unavailable: {type(exc).__name__}. Keeping deterministic evidence.")
+            analysis_result = dict(v2_result)
+            analysis_result["llm_status"] = "unavailable"
 
         analysis_result = attach_financial_evidence(
             analysis_result,
