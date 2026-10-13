@@ -514,6 +514,22 @@ def build_reason(ticker: str, breakdown: Dict[str, Any]) -> str:
 def run_fundamental_v2(ticker: str, data: Dict[str, Any], style: str = "growth") -> Dict[str, Any]:
     breakdown = calculate_score_breakdown(ticker, data, style=style)
     action = action_from_score(breakdown["confidence_score"], breakdown.get("risk_flags", []))
+    # Explain failures using the existing production predicates. No score
+    # boost, synthetic evidence, or override of severe financial risks.
+    severe_flags = sorted(SEVERE_FLAGS.intersection(breakdown["risk_flags"]))
+    buy_blockers = (
+        (["FUNDAMENTAL_SCORE_BELOW_BUY_THRESHOLD"] if breakdown["confidence_score"] < 0.72 else [])
+        + (["FUNDAMENTAL_SEVERE_RISK_FLAGS"] if severe_flags else [])
+    )
+    weakest_components = [
+        {"component": name, "observed_score": breakdown[name + "_score"],
+         "existing_weight": weight,
+         "weighted_contribution": round(breakdown[name + "_score"] * weight, 6)}
+        for name, weight in sorted(
+            breakdown["sector_weights"].items(),
+            key=lambda row: (breakdown[row[0] + "_score"], row[0]),
+        )
+    ]
     reason = build_reason(ticker, breakdown)
     return {
         "strength": action,
@@ -535,6 +551,10 @@ def run_fundamental_v2(ticker: str, data: Dict[str, Any], style: str = "growth")
                 for name, weight in breakdown["sector_weights"].items()
             },
             "zero_score_weight_policy": "included_in_denominator",
+            "buy_blocker_codes": buy_blockers,
+            "weakest_score_components": weakest_components,
+            "research_only": True,
+            "research_authorizes_buy": False,
             "key_metrics": breakdown["key_metrics"],
             "missing_metrics": [key for key, value in breakdown["key_metrics"].items() if value is None],
         },
